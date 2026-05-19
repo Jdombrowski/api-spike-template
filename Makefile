@@ -33,8 +33,8 @@ env: ## Copy .env.example → .env (skips if .env already exists)
 
 # ── Tests ──────────────────────────────────────────────────────────────────────
 .PHONY: test
-test: ## Run the test suite
-	$(PYTEST) tests/
+test: ## Run unit tests only (no network calls)
+	$(PYTEST) tests/test_core.py
 
 .PHONY: test-cov
 test-cov: ## Run tests with coverage report
@@ -44,6 +44,14 @@ test-cov: ## Run tests with coverage report
 test-cov-html: ## Run tests and open HTML coverage report
 	$(PYTEST) tests/ --cov=src --cov-report=html
 	open htmlcov/index.html
+
+.PHONY: test-polygon
+test-polygon: ## Run live Polygon.io integration tests (requires POLYGON_API_KEY)
+	$(PYTEST) tests/test_polygon_client.py -v
+
+.PHONY: test-edgar
+test-edgar: ## Run live EDGAR integration tests (requires EDGAR_USER_AGENT in .env)
+	$(PYTEST) tests/test_edgar_client.py -v
 
 # ── Run ────────────────────────────────────────────────────────────────────────
 .PHONY: run

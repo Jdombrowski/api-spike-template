@@ -13,6 +13,7 @@ in a wealth management / RIA data platform context.
 ## The Problem This Addresses
 
 Financial APIs are often inconsistently documented:
+
 - Fields appear in some responses but not others with no explanation
 - The same concept appears under different names across endpoints
 - Units (USD vs. USD thousands) are not stated in field names
@@ -73,6 +74,7 @@ analysis.
 
 **Step 2 — Profile before modeling.**
 The `Profiler` class collects 50–100 real responses and surfaces:
+
 - Fields present in docs but absent in reality (and vice versa)
 - Nullability rates — which fields are reliably populated
 - Type inconsistencies — fields that are sometimes `str`, sometimes `int`
@@ -103,7 +105,7 @@ logged to the database.
 # Clone and install
 git clone <repo>
 cd api-spike
-pip install -e ".[dev]"
+make make install-dev
 
 # Configure
 cp .env.example .env
@@ -174,14 +176,14 @@ from the API. Raw data is the source of truth. Canonical data is derived.
 
 SEC EDGAR is a proxy for a custodian API (Schwab, Fidelity, Pershing) because:
 
-| EDGAR | Custodian equivalent |
-|-------|---------------------|
-| CIK | account_id |
-| `companyfacts` endpoint | account balance / position endpoint |
-| 13F filings | transaction history files |
-| XBRL concept taxonomy | custodian's proprietary field naming |
-| Nightly index updates | Nightly SFTP file drops |
-| Regulatory schema changes | Custodian API version updates |
+| EDGAR                     | Custodian equivalent                 |
+| ------------------------- | ------------------------------------ |
+| CIK                       | account_id                           |
+| `companyfacts` endpoint   | account balance / position endpoint  |
+| 13F filings               | transaction history files            |
+| XBRL concept taxonomy     | custodian's proprietary field naming |
+| Nightly index updates     | Nightly SFTP file drops              |
+| Regulatory schema changes | Custodian API version updates        |
 
 The same investigation methodology — profile, triangulate, map explicitly,
 detect drift — applies directly.
