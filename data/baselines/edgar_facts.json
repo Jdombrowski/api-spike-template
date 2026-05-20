@@ -1,0 +1,21 @@
+{
+  "name": "edgar_company_facts",
+  "created_at": "2026-05-19T20:06:23.712023+00:00",
+  "fields": {
+    "cik": {
+      "types": [
+        "int",
+        "str"
+      ],
+      "nullable": false,
+      "optional": false
+    },
+    "entityName": {
+      "types": [
+        "str"
+      ],
+      "nullable": false,
+      "optional": false
+    }
+  }
+}
