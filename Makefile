@@ -54,6 +54,14 @@ run: ## Run the full investigation pipeline
 run-cik: ## Run pipeline for a specific CIK  (usage: make run-cik CIK=0001067983)
 	$(PY) -m src.pipeline --cik $(CIK)
 
+.PHONY: report
+report: ## Print a rich terminal summary of all investigation findings
+	$(PY) -m src.report
+
+.PHONY: export
+export: ## Export findings to timestamped CSVs in data/exports/
+	$(PY) -m src.report --export
+
 # ── Clean ──────────────────────────────────────────────────────────────────────
 .PHONY: clean
 clean: ## Remove byte-compiled files and test artifacts

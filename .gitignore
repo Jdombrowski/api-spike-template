@@ -2,6 +2,7 @@
 # data/baselines/ is intentionally tracked — it's the drift detection baseline
 data/db.sqlite
 data/samples/
+data/exports/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
