@@ -28,7 +28,7 @@ from src import config
 from src.ingest.edgar_client import (
     get_company_facts, get_submissions, get_13f_filings, SAMPLE_FILERS
 )
-from src.ingest.polygon_client import get_ticker_details, resolve_cik_to_ticker
+from src.ingest.polygon_client import get_ticker_details, search_ticker_by_name
 from src.profile.profiler import Profiler
 from src.schema.drift_detector import SchemaDriftDetector
 from src.schema.canonical_mapper import (
@@ -90,7 +90,9 @@ def run(ciks: list[str], save_samples: bool = True):
             continue
 
         # Polygon: ticker details (cross-reference source)
-        ticker = resolve_cik_to_ticker(cik)
+        # Prefer tickers from the already-fetched EDGAR facts; fall back to Polygon name search
+        edgar_tickers = edgar_raw.get("tickers", [])
+        ticker = edgar_tickers[0] if edgar_tickers else search_ticker_by_name(edgar_raw.get("name", ""))
         polygon_raw_id = None
         polygon_raw    = None
 

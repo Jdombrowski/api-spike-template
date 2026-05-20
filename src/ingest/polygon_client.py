@@ -78,45 +78,30 @@ def get_ticker_types() -> dict:
     return get(url, source="polygon", params=_PARAMS)
 
 
-def resolve_cik_to_ticker(cik: str) -> str | None:
+def search_ticker_by_name(name: str) -> str | None:
     """
-    Attempt to find the primary ticker for a given SEC CIK.
-    
-    This mapping is NOT directly available — we have to search by name
-    and cross-reference. This is intentionally the kind of fuzzy, 
-    undocumented join that real custodian data work requires.
-    
-    Returns ticker string or None if unresolvable.
+    Search Polygon for a ticker by company name.
+
+    Fallback for entities where EDGAR provides no tickers list.
+    Result is an assumption — validate against the returned CIK before use.
+
+    Returns ticker string or None if no match found.
     """
-    # First, get the company name from EDGAR submissions
-    from src.ingest.edgar_client import get_submissions
+    if not name:
+        return None
     try:
-        subs  = get_submissions(cik)
-        name  = subs.get("name", "")
-        tickers = subs.get("tickers", [])
-
-        # EDGAR sometimes gives us the tickers directly — use them if present
-        if tickers:
-            log.info("[polygon] CIK %s → tickers from EDGAR: %s", cik, tickers)
-            return tickers[0]
-
-        # Otherwise search Polygon by name — imprecise, flag as assumption
-        if name:
-            log.warning(
-                "[polygon] CIK %s: no ticker in EDGAR, searching by name '%s' — "
-                "result is an assumption, validate manually", cik, name
-            )
-            url = "https://api.polygon.io/v3/reference/tickers"
-            results = get(url, source="polygon", params={
-                "search": name[:30],  # truncate to avoid over-specific query
-                "limit": 5,
-                **_PARAMS
-            })
-            hits = results.get("results", [])
-            if hits:
-                return hits[0].get("ticker")
-
+        log.warning(
+            "[polygon] searching by name '%s' — result is an assumption, validate manually", name
+        )
+        url = "https://api.polygon.io/v3/reference/tickers"
+        results = get(url, source="polygon", params={
+            "search": name[:30],  # truncate to avoid over-specific query
+            "limit": 5,
+            **_PARAMS
+        })
+        hits = results.get("results", [])
+        if hits:
+            return hits[0].get("ticker")
     except Exception as e:
-        log.error("[polygon] CIK→ticker resolution failed for %s: %s", cik, e)
-
+        log.error("[polygon] name search failed for '%s': %s", name, e)
     return None

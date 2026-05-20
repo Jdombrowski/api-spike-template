@@ -107,10 +107,5 @@ def get_13f_filings(cik: str) -> list[dict]:
 def get_filing_index(cik: str, accession_number: str) -> dict:
     """Fetch the index of documents in a specific filing."""
     acc_clean = accession_number.replace("-", "")
-    cik_padded = cik.zfill(10)
-    url = (
-        f"https://www.sec.gov/Archives/edgar/full-index/"
-        f"../data/{int(cik)}/{acc_clean}/index.json"
-    )
-    # Note: this URL pattern is inconsistently documented — discovered empirically
+    url = f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{acc_clean}/index.json"
     return get(url, source="edgar", headers=_HEADERS)

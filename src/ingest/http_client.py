@@ -13,7 +13,7 @@ import random
 import time
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum, auto
 from pathlib import Path
 from typing import Any, Optional
@@ -187,7 +187,7 @@ def get(
 
 def _save_sample(data: Any, source: str, name: str):
     """Persist raw API response for offline investigation and regression testing."""
-    ts   = datetime.utcnow().strftime("%Y%m%dT%H%M%S")
+    ts   = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
     path = config.SAMPLES_DIR / f"{source}__{name}__{ts}.json"
     path.write_text(json.dumps(data, indent=2))
     log.info("[%s] sample saved → %s", source, path.name)
