@@ -17,18 +17,10 @@ help: ## Show this help
 venv: ## Create the virtual environment
 	$(PYTHON) -m venv $(VENV)
 
-.PHONY: install
-install: venv ## Install runtime dependencies
-	$(PIP) install --upgrade pip
-	$(PIP) install -e .
-
-.PHONY: install-dev
-install-dev: venv ## Install runtime + dev dependencies (pytest, coverage)
+.PHONY: init
+init: venv ## First-time setup: dependencies and .env
 	$(PIP) install --upgrade pip
 	$(PIP) install -e ".[dev]"
-
-.PHONY: env
-env: ## Copy .env.example → .env (skips if .env already exists)
 	@test -f .env && echo ".env already exists — skipping" || (cp .env.example .env && echo "Created .env — fill in your API keys")
 
 # ── Tests ──────────────────────────────────────────────────────────────────────
