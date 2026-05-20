@@ -1,7 +1,7 @@
 # Project-specific
-data/db.sqlite          # generated — rebuilt on every run
-data/samples/           # raw API snapshots — large and ephemeral
 # data/baselines/ is intentionally tracked — it's the drift detection baseline
+data/db.sqlite
+data/samples/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
