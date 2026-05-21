@@ -5,7 +5,7 @@
 
 ---
 
-## ⚠ Anomalies
+## Anomalies
 
 - **`cik`**: inconsistent types: {'int': 2, 'str': 1}
 
@@ -13,8 +13,8 @@
 
 | field        | present% | null% | absent% | types            | samples                                               |
 | ------------ | -------- | ----- | ------- | ---------------- | ----------------------------------------------------- |
-| `cik`        | 100%     | —     | —       | `int`×2, `str`×1 | [1067983, 1364742]                                    |
-| `entityName` | 100%     | —     | —       | `str`×3          | ['BERKSHIRE HATHAWAY INC', 'BLACKROCK FINANCE, INC.'] |
+| `cik`        | 100%     | -     | -       | `int`x2, `str`x1 | [1067983, 1364742]                                    |
+| `entityName` | 100%     | -     | -       | `str`x3          | ['BERKSHIRE HATHAWAY INC', 'BLACKROCK FINANCE, INC.'] |
 
 ---
 

@@ -225,7 +225,7 @@ def save_holdings(holdings: list[dict], raw_id: int | None = None) -> None:
     with _conn() as con:
         con.executemany(
             """
-            INSERT INTO holdings
+            INSERT OR IGNORE INTO holdings
               (cik, accession_number, form_type, filing_date, as_of_date,
                issuer_name, cusip, ticker, shares_held, value_reported, value_unit,
                price_at_filing, value_estimated, validation_ratio, validation_status,

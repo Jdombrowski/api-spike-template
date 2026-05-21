@@ -177,25 +177,35 @@ class Profiler:
         # Anomalies section
         anomalies = [(n, s) for n, s in self._stats.items() if s.anomaly]
         if anomalies:
-            lines += ["## ⚠ Anomalies", ""]
+            lines += ["## Anomalies", ""]
             for name, s in anomalies:
                 lines.append(f"- **`{name}`**: {s.anomaly}")
             lines.append("")
 
-        # Full field table
-        lines += [
-            "## Field Inventory",
-            "",
-            "| field | present% | null% | absent% | types | samples |",
-            "|-------|----------|-------|---------|-------|---------|",
-        ]
+        # Build table rows as plain strings, then align columns
+        headers = ["field", "present%", "null%", "absent%", "types", "samples"]
+        rows: list[tuple[str, ...]] = []
         for name, s in sorted(self._stats.items()):
-            pct = f"{s.present / s.total * 100:.0f}%" if s.total else "—"
-            null_p = f"{s.null_pct:.0f}%" if s.null else "—"
-            abs_p = f"{s.absent_pct:.0f}%" if s.absent else "—"
-            types = ", ".join(f"`{t}`×{c}" for t, c in s.types.items() if c > 0)
+            pct = f"{s.present / s.total * 100:.0f}%" if s.total else "-"
+            null_p = f"{s.null_pct:.0f}%" if s.null else "-"
+            abs_p = f"{s.absent_pct:.0f}%" if s.absent else "-"
+            types = ", ".join(f"`{t}`x{c}" for t, c in s.types.items() if c > 0)
             samples = str(s.samples[:2]).replace("|", "\\|")
-            lines.append(f"| `{name}` | {pct} | {null_p} | {abs_p} | {types} | {samples} |")
+            rows.append((f"`{name}`", pct, null_p, abs_p, types, samples))
+
+        # Compute column widths from header + data
+        widths = [len(h) for h in headers]
+        for row in rows:
+            for i, cell in enumerate(row):
+                widths[i] = max(widths[i], len(cell))
+
+        def _row(cells: tuple[str, ...] | list[str]) -> str:
+            return "| " + " | ".join(c.ljust(widths[i]) for i, c in enumerate(cells)) + " |"
+
+        sep = "| " + " | ".join("-" * w for w in widths) + " |"
+
+        lines += ["## Field Inventory", "", _row(headers), sep]
+        lines += [_row(r) for r in rows]
 
         lines += [
             "",
