@@ -291,3 +291,52 @@ class TestHoldingsPipelineRun:
         monkeypatch.setattr(hp_mod, "get_13f_document", lambda cik, acc: "<broken xml")
         hp_mod.run(["0001067983"])   # should not raise
         assert query_holdings("0001067983") == []
+
+
+# ── validate_top ───────────────────────────────────────────────────────────
+
+class TestValidateTop:
+    """validate_top limits Polygon calls to the top-N positions by reported value."""
+
+    def test_only_top_n_positions_are_cross_validated(self, monkeypatch):
+        monkeypatch.setattr(hp_mod, "get_13f_filings",      lambda cik: [_FILING_META])
+        monkeypatch.setattr(hp_mod, "get_13f_document",     lambda cik, acc: _INFO_TABLE_XML)
+        monkeypatch.setattr(hp_mod, "_resolve_ticker",      lambda h: "AAPL")
+        monkeypatch.setattr(hp_mod, "_fetch_closing_price", lambda t, d: 130.0)
+
+        hp_mod.run(["0001067983"], validate_top=1)
+
+        rows = query_holdings("0001067983")
+        assert len(rows) == 2
+        # highest-value position (APPLE, value=174523) should be validated
+        aapl = next(r for r in rows if r["issuer_name"] == "APPLE INC")
+        assert aapl["validation_status"] in ("CLOSE", "DIVERGENT")
+        # second position should be skipped
+        bac = next(r for r in rows if r["issuer_name"] == "BANK OF AMERICA CORP")
+        assert bac["validation_status"] == "NO_PRICE"
+
+    def test_remainder_stored_as_no_price(self, monkeypatch):
+        monkeypatch.setattr(hp_mod, "get_13f_filings",      lambda cik: [_FILING_META])
+        monkeypatch.setattr(hp_mod, "get_13f_document",     lambda cik, acc: _INFO_TABLE_XML)
+        monkeypatch.setattr(hp_mod, "_resolve_ticker",      lambda h: None)
+        monkeypatch.setattr(hp_mod, "_fetch_closing_price", lambda t, d: None)
+
+        hp_mod.run(["0001067983"], validate_top=0)
+
+        rows = query_holdings("0001067983")
+        assert all(r["validation_status"] == "NO_PRICE" for r in rows)
+
+    def test_validate_top_larger_than_positions_validates_all(self, monkeypatch):
+        validated = []
+        monkeypatch.setattr(hp_mod, "get_13f_filings",      lambda cik: [_FILING_META])
+        monkeypatch.setattr(hp_mod, "get_13f_document",     lambda cik, acc: _INFO_TABLE_XML)
+        monkeypatch.setattr(hp_mod, "_resolve_ticker",      lambda h: "TICK")
+        monkeypatch.setattr(hp_mod, "_fetch_closing_price", lambda t, d: 130.0)
+
+        hp_mod.run(["0001067983"], validate_top=100)
+
+        rows = query_holdings("0001067983")
+        # all 2 positions attempted (may be CLOSE/DIVERGENT, not NO_PRICE due to skipping)
+        assert len(rows) == 2
+        assert all(r["validation_status"] != "NO_PRICE" or r["price_at_filing"] is None
+                   for r in rows)

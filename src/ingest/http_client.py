@@ -104,6 +104,29 @@ def _breaker(name: str) -> CircuitBreaker:
     return _breakers[name]
 
 
+# ── Rate limiting ──────────────────────────────────────────────────────────
+
+# Minimum seconds between requests per source (derived from RPM config)
+_min_interval: dict[str, float] = {}
+if config.POLYGON_RATE_LIMIT_RPM > 0:
+    _min_interval["polygon"] = 60.0 / config.POLYGON_RATE_LIMIT_RPM
+
+_last_call: dict[str, float] = {}
+
+
+def _throttle(source: str) -> None:
+    """Sleep as needed to honour the per-source minimum request interval."""
+    interval = _min_interval.get(source, 0.0)
+    if not interval:
+        return
+    elapsed = time.monotonic() - _last_call.get(source, 0.0)
+    if elapsed < interval:
+        wait = interval - elapsed
+        log.info("[%s] rate-limiting — sleeping %.1fs", source, wait)
+        time.sleep(wait)
+    _last_call[source] = time.monotonic()
+
+
 def _fetch(
     url: str,
     *,
@@ -120,6 +143,7 @@ def _fetch(
 
     for attempt in range(config.MAX_RETRIES):
         breaker.allow_request()   # raises CircuitOpenError if open
+        _throttle(source)
 
         try:
             resp = session.get(url, params=params, headers=headers, timeout=config.REQUEST_TIMEOUT)

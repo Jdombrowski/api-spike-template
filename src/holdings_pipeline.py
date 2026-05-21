@@ -28,7 +28,7 @@ from rich import box
 
 from src import config
 from src.ingest.edgar_client import get_13f_filings, get_13f_document, SAMPLE_FILERS
-from src.ingest.polygon_client import get_daily_bars, search_ticker_by_name
+from src.ingest.polygon_client import get_daily_bars, lookup_ticker_by_cusip, search_ticker_by_name
 from src.schema.canonical_mapper import CanonicalHolding
 from src.schema.holdings_mapper import ThirteenFMapper
 from src.storage.db import init_db, save_raw, save_holdings, query_holdings_summary
@@ -41,13 +41,14 @@ _CLOSE_THRESHOLD = 0.15   # within 15% of 1.0 → CLOSE
 
 # ── Public entry point ─────────────────────────────────────────────────────
 
-def run(ciks: list[str], max_filings: int = 1) -> None:
+def run(ciks: list[str], max_filings: int = 1, validate_top: int = 10) -> None:
     config.validate()
     init_db()
 
     console.print(Panel(
         f"[bold]13F Holdings Extraction[/bold]\n"
-        f"Targets: {len(ciks)} CIK(s)  |  Most recent {max_filings} filing(s) each",
+        f"Targets: {len(ciks)} CIK(s)  |  Most recent {max_filings} filing(s) each\n"
+        f"Cross-validation: top {validate_top} positions by reported value per filing",
         title="Stage 2 · Holdings Pipeline",
     ))
 
@@ -64,7 +65,7 @@ def run(ciks: list[str], max_filings: int = 1) -> None:
             continue
 
         for filing in filings:
-            _process_filing(cik, filing)
+            _process_filing(cik, filing, validate_top)
 
     # ── Summary ────────────────────────────────────────────────────────────
     console.rule("[bold]Holdings Summary")
@@ -95,7 +96,7 @@ def run(ciks: list[str], max_filings: int = 1) -> None:
 
 # ── Per-filing processing ──────────────────────────────────────────────────
 
-def _process_filing(cik: str, filing: dict) -> None:
+def _process_filing(cik: str, filing: dict, validate_top: int) -> None:
     acc = filing["accession_number"]
     console.print(f"  [dim]{filing.get('form', '')}[/dim]  {filing['filing_date']}  {acc}")
 
@@ -119,17 +120,23 @@ def _process_filing(cik: str, filing: dict) -> None:
 
     console.print(f"    parsed {len(holdings)} positions")
 
-    validated = _cross_validate(holdings)
-    save_holdings(validated, raw_id)
+    sorted_holdings = sorted(holdings, key=lambda h: h.market_value_usd or 0, reverse=True)
+    to_validate     = sorted_holdings[:validate_top]
+    remainder       = sorted_holdings[validate_top:]
+
+    validated = _cross_validate(to_validate)
+    skipped   = [{**_to_dict(h), "validation_status": "NO_PRICE"} for h in remainder]
+    save_holdings(validated + skipped, raw_id)
 
     n_close    = sum(1 for h in validated if h.get("validation_status") == "CLOSE")
     n_diverge  = sum(1 for h in validated if h.get("validation_status") == "DIVERGENT")
-    n_no_price = sum(1 for h in validated if h.get("validation_status") == "NO_PRICE")
+    n_no_price = sum(1 for h in validated if h.get("validation_status") == "NO_PRICE") + len(skipped)
     console.print(
         f"    [green]✓[/green] cross-validation: "
         f"[green]{n_close} CLOSE[/green]  "
         f"[red]{n_diverge} DIVERGENT[/red]  "
         f"[dim]{n_no_price} NO_PRICE[/dim]"
+        + (f"  [dim]({len(skipped)} skipped)[/dim]" if skipped else "")
     )
 
 
@@ -162,8 +169,9 @@ def _cross_validate(holdings: list[CanonicalHolding]) -> list[dict]:
             results.append(row)
             continue
 
+        multiplier        = 1000 if h.value_unit == "USD_THOUSANDS" else 1
         estimated         = h.shares_held * price
-        reported_full_usd = h.market_value_usd * 1000   # USD thousands → USD
+        reported_full_usd = h.market_value_usd * multiplier
         ratio             = estimated / reported_full_usd if reported_full_usd else None
 
         row["price_at_filing"]  = price
@@ -176,6 +184,12 @@ def _cross_validate(holdings: list[CanonicalHolding]) -> list[dict]:
             row["validation_status"] = "CLOSE"
         else:
             row["validation_status"] = "DIVERGENT"
+            log.warning(
+                "[xval] DIVERGENT %-35s  ticker=%-6s  shares=%.0f  "
+                "price=$%.2f  estimated=$%.0f  reported=$%.0f  ratio=%.3f",
+                h.entity_name, ticker, h.shares_held,
+                price, estimated, reported_full_usd, ratio,
+            )
 
         results.append(row)
 
@@ -183,23 +197,45 @@ def _cross_validate(holdings: list[CanonicalHolding]) -> list[dict]:
 
 
 def _resolve_ticker(holding: CanonicalHolding) -> str | None:
-    """Best-effort issuer name → ticker resolution via Polygon name search."""
+    """CUSIP → ticker (exact), falling back to name search (fuzzy)."""
+    if holding.cusip:
+        ticker = lookup_ticker_by_cusip(holding.cusip)
+        if ticker:
+            log.info("[resolve] %-40s CUSIP %-10s → %s", holding.entity_name, holding.cusip, ticker)
+            return ticker
+        log.warning("[resolve] %-40s CUSIP %-10s → no match", holding.entity_name, holding.cusip)
+
     if not holding.entity_name:
+        log.warning("[resolve] no entity name and no CUSIP match — skipping")
         return None
+
     try:
-        return search_ticker_by_name(holding.entity_name)
-    except Exception:
+        ticker = search_ticker_by_name(holding.entity_name)
+        if ticker:
+            log.warning("[resolve] %-40s name search (fuzzy) → %s", holding.entity_name, ticker)
+        else:
+            log.warning("[resolve] %-40s name search → no match", holding.entity_name)
+        return ticker
+    except Exception as exc:
+        log.warning("[resolve] %-40s name search failed: %s", holding.entity_name, exc)
         return None
 
 
 def _fetch_closing_price(ticker: str, as_of_date: str | None) -> float | None:
-    """Return the closing price for ticker on as_of_date, or None if unavailable."""
+    """
+    Return the most recent closing price on or before as_of_date.
+
+    Uses a 7-day lookback so quarter-ends that fall on weekends or holidays
+    (e.g. Dec 31, Sep 30) resolve to the nearest preceding trading day.
+    """
     if not as_of_date:
         return None
     try:
-        resp = get_daily_bars(ticker, from_date=as_of_date, to_date=as_of_date)
+        from datetime import date, timedelta
+        from_d = str(date.fromisoformat(as_of_date) - timedelta(days=7))
+        resp = get_daily_bars(ticker, from_date=from_d, to_date=as_of_date)
         bars = resp.get("results", [])
-        return bars[0]["c"] if bars else None
+        return bars[-1]["c"] if bars else None   # last bar = most recent close ≤ as_of_date
     except Exception:
         return None
 
@@ -236,9 +272,10 @@ if __name__ == "__main__":
     )
 
     parser = argparse.ArgumentParser(description="Extract and cross-validate 13F holdings")
-    parser.add_argument("--cik",         nargs="*", help="CIK(s) to process (space-separated)")
-    parser.add_argument("--max-filings", type=int, default=1, help="Filings per CIK (default: 1)")
+    parser.add_argument("--cik",           nargs="*", help="CIK(s) to process (space-separated)")
+    parser.add_argument("--max-filings",   type=int, default=1,  help="Filings per CIK (default: 1)")
+    parser.add_argument("--validate-top",  type=int, default=10, help="Top N positions to cross-validate per filing (default: 10)")
     args = parser.parse_args()
 
     target_ciks = args.cik or list(SAMPLE_FILERS.values())[:3]
-    run(target_ciks, max_filings=args.max_filings)
+    run(target_ciks, max_filings=args.max_filings, validate_top=args.validate_top)

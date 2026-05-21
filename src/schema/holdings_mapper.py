@@ -108,6 +108,8 @@ class ThirteenFMapper:
             if tag not in known:
                 unmapped.append(tag)
 
+        value_unit = _infer_value_unit(value_reported, shares, assumptions)
+
         return CanonicalHolding(
             source           = "edgar_13f",
             source_entity_id = self.cik,
@@ -117,7 +119,7 @@ class ThirteenFMapper:
             cusip            = cusip or None,
             shares_held      = float(shares) if shares is not None else None,
             market_value_usd = float(value_reported) if value_reported is not None else None,
-            value_unit       = "USD_THOUSANDS",  # CONFIRMED per SEC 13F reporting rules
+            value_unit       = value_unit,
             as_of_date       = derive_quarter_end(self.filing_date),
             filing_date      = self.filing_date,
             form_type        = self.form_type,
@@ -127,6 +129,33 @@ class ThirteenFMapper:
 
 
 # ── Private helpers ────────────────────────────────────────────────────────
+
+def _infer_value_unit(
+    value: int | None, shares: int | None, assumptions: list[str]
+) -> str:
+    """
+    Detect whether <value> is in USD thousands (SEC standard) or full USD.
+
+    The SEC 13F instructions specify thousands, but recent EDGAR XML submissions
+    have been observed using full dollar values. Heuristic: if value/shares >= $5,
+    the implied per-share price is in a plausible stock-price range, meaning the
+    value is already in full USD. Below that threshold, the per-share figure is
+    sub-dollar, which matches the thousands convention.
+
+    Edge case: stocks priced above $5,000/share (e.g. BRK.A) would be
+    misidentified when the filing truly uses thousands — log as assumption.
+    """
+    if value is None or shares is None or shares == 0:
+        return "USD_THOUSANDS"
+    implied_price = value / shares
+    if implied_price >= 5.0:
+        assumptions.append(
+            f"value_unit inferred as USD (not USD_THOUSANDS): "
+            f"value/shares={implied_price:.2f} exceeds thousands threshold"
+        )
+        return "USD"
+    return "USD_THOUSANDS"
+
 
 def _parse_int(text: str | None, field: str, assumptions: list[str]) -> int | None:
     if not text:

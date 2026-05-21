@@ -78,6 +78,28 @@ def get_ticker_types() -> dict:
     return get(url, source="polygon", params=_PARAMS)
 
 
+def lookup_ticker_by_cusip(cusip: str) -> str | None:
+    """
+    Exact CUSIP → ticker lookup via Polygon reference API.
+
+    Preferred over name search: CUSIP is a unique 9-character security identifier
+    that appears in every 13F InfoTable row, making it a reliable primary key.
+    Returns None if Polygon has no match (e.g. foreign ADRs, private instruments).
+    """
+    if not cusip:
+        return None
+    try:
+        url = "https://api.polygon.io/v3/reference/tickers"
+        results = get(url, source="polygon", params={"cusip": cusip, "limit": 1, **_PARAMS})
+        hits = results.get("results", [])
+        if hits:
+            log.info("[polygon] CUSIP %s resolved to %s", cusip, hits[0].get("ticker"))
+            return hits[0].get("ticker")
+    except Exception as e:
+        log.debug("[polygon] CUSIP lookup failed for '%s': %s", cusip, e)
+    return None
+
+
 def search_ticker_by_name(name: str) -> str | None:
     """
     Search Polygon for a ticker by company name.

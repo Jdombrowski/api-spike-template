@@ -34,6 +34,9 @@ CIRCUIT_RESET_S = int(os.getenv("CIRCUIT_RESET_S", "60"))
 BACKOFF_BASE = float(os.getenv("BACKOFF_BASE", "1.0"))
 BACKOFF_CAP = float(os.getenv("BACKOFF_CAP", "30.0"))
 
+# Proactive rate limiting (set to 0 to disable; Polygon free tier = 5 req/min)
+POLYGON_RATE_LIMIT_RPM = int(os.getenv("POLYGON_RATE_LIMIT_RPM", "5"))
+
 
 def validate():
     """Validate required configuration at startup."""

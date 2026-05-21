@@ -63,8 +63,8 @@ export: ## Export findings to timestamped CSVs in data/exports/
 	$(PY) -m src.report --export
 
 .PHONY: run-holdings
-run-holdings: ## Extract and cross-validate 13F positions  (usage: make run-holdings CIK=0001067983)
-	$(PY) -m src.holdings_pipeline $(if $(CIK),--cik $(CIK),)
+run-holdings: ## Extract and cross-validate 13F positions  (usage: make run-holdings CIK=0001067983 VALIDATE_TOP=10)
+	$(PY) -m src.holdings_pipeline $(if $(CIK),--cik $(CIK),) --validate-top $(or $(VALIDATE_TOP),10)
 
 # ── Clean ──────────────────────────────────────────────────────────────────────
 .PHONY: clean
