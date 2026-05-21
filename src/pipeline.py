@@ -16,27 +16,32 @@ Or investigate a specific entity:
     python -m src.pipeline --cik 0001067983   # Berkshire
 """
 import argparse
-import json
 import logging
-import sys
-from pathlib import Path
+
 from rich.console import Console
 from rich.panel import Panel
-from rich import print as rprint
 
 from src import config
 from src.ingest.edgar_client import (
-    get_company_facts, get_submissions, get_13f_filings, SAMPLE_FILERS
+    SAMPLE_FILERS,
+    get_company_facts,
 )
 from src.ingest.polygon_client import get_ticker_details, search_ticker_by_name
 from src.profile.profiler import Profiler
-from src.schema.drift_detector import SchemaDriftDetector
 from src.schema.canonical_mapper import (
-    EdgarCompanyFactsMapper, PolygonTickerMapper, reconcile_entity
+    EdgarCompanyFactsMapper,
+    PolygonTickerMapper,
+    reconcile_entity,
 )
+from src.schema.drift_detector import SchemaDriftDetector
 from src.storage.db import (
-    init_db, save_raw, save_canonical, save_drift_events,
-    save_reconciliation, query_drift_summary, query_reconciliation_summary
+    init_db,
+    query_drift_summary,
+    query_reconciliation_summary,
+    save_canonical,
+    save_drift_events,
+    save_raw,
+    save_reconciliation,
 )
 
 logging.basicConfig(
@@ -210,7 +215,7 @@ def run(ciks: list[str], save_samples: bool = True):
         f"results saved to {config.DB_PATH}[/dim]"
     )
     console.print(
-        f"[dim]Profile report → docs/edgar_profile.md[/dim]\n"
+        "[dim]Profile report → docs/edgar_profile.md[/dim]\n"
     )
 
 

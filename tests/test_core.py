@@ -7,10 +7,10 @@ Not exhaustive — focused on the behaviors that matter most:
   - Canonical mapper flags unknown fields rather than silently dropping them
 """
 import pytest
-from src.profile.profiler import Profiler
-from src.schema.drift_detector import SchemaDriftDetector
-from src.schema.canonical_mapper import EdgarCompanyFactsMapper, reconcile_entity
 
+from src.profile.profiler import Profiler
+from src.schema.canonical_mapper import EdgarCompanyFactsMapper, reconcile_entity
+from src.schema.drift_detector import SchemaDriftDetector
 
 # ── Profiler ───────────────────────────────────────────────────────────────
 

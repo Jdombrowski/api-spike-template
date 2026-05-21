@@ -14,7 +14,6 @@ EDGAR is a good stand-in for a custodian API because:
   - Rate limits enforced via User-Agent header (not API key)
 """
 import logging
-from typing import Any
 
 from src import config
 from src.ingest.http_client import get, get_text

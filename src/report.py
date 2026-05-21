@@ -14,10 +14,10 @@ import logging
 from datetime import datetime, timezone
 from pathlib import Path
 
+from rich import box
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
-from rich import box
 
 from src import config
 from src.storage.db import _conn, init_db, query_holdings_summary

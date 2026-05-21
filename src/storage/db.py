@@ -14,8 +14,6 @@ import json
 import logging
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime
-from pathlib import Path
 
 from src import config
 
@@ -90,29 +88,41 @@ def init_db():
                 reconciled_at   TEXT    NOT NULL DEFAULT (datetime('now'))
             );
 
-            -- 13F positions parsed from InfoTable XML
-            -- value_reported is in USD THOUSANDS per SEC 13F reporting rules
-            -- Downstream consumers MUST multiply by 1000 for actual USD value
+            -- 13F positions parsed from InfoTable XML or DERA bulk TSV
+            -- value_reported unit varies by filing era — check value_unit column
             CREATE TABLE IF NOT EXISTS holdings (
                 id                  INTEGER PRIMARY KEY AUTOINCREMENT,
                 cik                 TEXT    NOT NULL,
                 accession_number    TEXT,
                 form_type           TEXT,
                 filing_date         TEXT,
-                as_of_date          TEXT,               -- quarter-end date (derived from filing_date)
+                as_of_date          TEXT,               -- authoritative quarter-end date
                 issuer_name         TEXT,
                 cusip               TEXT,
-                ticker              TEXT,               -- NULL until CUSIP resolved via Polygon
+                ticker              TEXT,
                 shares_held         REAL,
-                value_reported      REAL,               -- in USD thousands
+                value_reported      REAL,
                 value_unit          TEXT    NOT NULL DEFAULT 'USD_THOUSANDS',
-                price_at_filing     REAL,               -- Polygon closing price at as_of_date
-                value_estimated     REAL,               -- shares_held × price_at_filing
-                validation_ratio    REAL,               -- value_estimated / (value_reported × 1000)
+                price_at_filing     REAL,
+                value_estimated     REAL,
+                validation_ratio    REAL,
                 validation_status   TEXT,               -- CLOSE | DIVERGENT | NO_PRICE
                 raw_response_id     INTEGER REFERENCES raw_responses(id),
-                created_at          TEXT    NOT NULL DEFAULT (datetime('now'))
+                created_at          TEXT    NOT NULL DEFAULT (datetime('now')),
+
+                -- Schema-level constraint: one position per (filer, filing, security).
+                -- Rare PRN+SH duplicates on the same CUSIP within one filing are silently
+                -- dropped on re-ingest — acceptable for portfolio-level analysis.
+                UNIQUE(cik, accession_number, cusip)
             );
+
+            -- Quarter-over-quarter delta and timeline queries
+            CREATE INDEX IF NOT EXISTS idx_holdings_cik_quarter
+                ON holdings(cik, as_of_date);
+
+            -- Cross-filer "who holds this security" queries
+            CREATE INDEX IF NOT EXISTS idx_holdings_cusip
+                ON holdings(cusip);
         """)
     log.info("[storage] database initialized at %s", config.DB_PATH)
 
@@ -234,10 +244,14 @@ def query_holdings_summary() -> list[dict]:
         rows = con.execute("""
             SELECT
                 cik,
-                COUNT(*)                                                    AS position_count,
+                COUNT(*)                                                      AS position_count,
+                COUNT(DISTINCT as_of_date)                                    AS quarter_count,
                 SUM(CASE WHEN validation_status = 'CLOSE' THEN 1 ELSE 0 END) AS validated_count,
-                ROUND(SUM(value_reported) / 1000.0, 1)                     AS total_value_millions,
-                MAX(filing_date)                                            AS latest_filing
+                ROUND(SUM(
+                    CASE WHEN value_unit = 'USD' THEN value_reported
+                         ELSE value_reported * 1000.0 END
+                ) / 1000000.0, 1)                                             AS total_value_millions,
+                MAX(as_of_date)                                               AS latest_filing
             FROM holdings
             GROUP BY cik
             ORDER BY total_value_millions DESC
@@ -258,4 +272,104 @@ def query_holdings(cik: str | None = None, limit: int = 100) -> list[dict]:
                 "SELECT * FROM holdings ORDER BY cik, value_reported DESC LIMIT ?",
                 (limit,),
             ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def query_holdings_delta(
+    cik: str, from_quarter: str, to_quarter: str
+) -> list[dict]:
+    """
+    Quarter-over-quarter position changes for a filer.
+
+    Returns NEW, EXITED, INCREASED (>5%), and DECREASED (>5%) positions.
+    UNCHANGED positions are excluded — callers get signal, not noise.
+    """
+    with _conn() as con:
+        rows = con.execute("""
+            WITH
+              from_q AS (
+                SELECT cusip, issuer_name, shares_held, value_reported, value_unit
+                FROM holdings WHERE cik = ? AND as_of_date = ?
+              ),
+              to_q AS (
+                SELECT cusip, issuer_name, shares_held, value_reported, value_unit
+                FROM holdings WHERE cik = ? AND as_of_date = ?
+              ),
+              combined AS (
+                SELECT
+                  COALESCE(t.cusip, f.cusip)             AS cusip,
+                  COALESCE(t.issuer_name, f.issuer_name) AS issuer_name,
+                  f.shares_held   AS shares_prev,
+                  t.shares_held   AS shares_curr,
+                  f.value_reported AS value_prev,
+                  t.value_reported AS value_curr,
+                  COALESCE(t.value_unit, f.value_unit)   AS value_unit
+                FROM from_q f LEFT JOIN to_q t ON t.cusip = f.cusip
+                UNION ALL
+                SELECT
+                  t.cusip, t.issuer_name,
+                  NULL, t.shares_held, NULL, t.value_reported, t.value_unit
+                FROM to_q t LEFT JOIN from_q f ON f.cusip = t.cusip
+                WHERE f.cusip IS NULL
+              )
+            SELECT
+              cusip, issuer_name,
+              shares_prev, shares_curr,
+              value_prev, value_curr, value_unit,
+              CASE
+                WHEN shares_prev IS NULL                              THEN 'NEW'
+                WHEN shares_curr IS NULL                             THEN 'EXITED'
+                WHEN shares_curr > shares_prev * 1.05               THEN 'INCREASED'
+                ELSE                                                      'DECREASED'
+              END AS change_type
+            FROM combined
+            WHERE shares_prev IS NULL
+               OR shares_curr IS NULL
+               OR ABS(shares_curr - shares_prev) / shares_prev > 0.05
+            ORDER BY COALESCE(value_curr, 0) DESC
+        """, (cik, from_quarter, cik, to_quarter)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def query_portfolio_timeline(cik: str) -> list[dict]:
+    """Quarter-by-quarter total value and position count for a filer."""
+    with _conn() as con:
+        rows = con.execute("""
+            SELECT
+                as_of_date,
+                COUNT(*)  AS position_count,
+                ROUND(SUM(
+                    CASE WHEN value_unit = 'USD' THEN value_reported
+                         ELSE value_reported * 1000.0 END
+                ) / 1000000.0, 1) AS total_value_millions
+            FROM holdings
+            WHERE cik = ?
+            GROUP BY as_of_date
+            ORDER BY as_of_date
+        """, (cik,)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def query_security_holders(
+    cusip: str, quarter: str | None = None
+) -> list[dict]:
+    """
+    Which filers held a given CUSIP in a given quarter.
+    Defaults to the most recent quarter that security appears in.
+    """
+    with _conn() as con:
+        effective_quarter = quarter or con.execute(
+            "SELECT MAX(as_of_date) FROM holdings WHERE cusip = ?", (cusip,)
+        ).fetchone()[0]
+
+        if not effective_quarter:
+            return []
+
+        rows = con.execute("""
+            SELECT cik, issuer_name, shares_held, value_reported, value_unit,
+                   as_of_date, validation_status
+            FROM holdings
+            WHERE cusip = ? AND as_of_date = ?
+            ORDER BY shares_held DESC
+        """, (cusip, effective_quarter)).fetchall()
     return [dict(r) for r in rows]

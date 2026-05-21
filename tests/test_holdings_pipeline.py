@@ -6,16 +6,15 @@ Tests for the 13F holdings pipeline:
   - holdings_pipeline.run(): end-to-end with mocked network calls
   - Cross-validation: ratio calculation and status classification
 """
-import json
-import pytest
 from unittest.mock import MagicMock
 
-from src import config
-from src.storage import db
-from src.storage.db import _conn, save_holdings, query_holdings_summary, query_holdings
-from src.schema.holdings_mapper import ThirteenFMapper, derive_quarter_end
-import src.holdings_pipeline as hp_mod
+import pytest
 
+import src.holdings_pipeline as hp_mod
+from src import config
+from src.schema.holdings_mapper import ThirteenFMapper, derive_quarter_end
+from src.storage import db
+from src.storage.db import query_holdings, query_holdings_summary, save_holdings
 
 # ── Fixtures ───────────────────────────────────────────────────────────────
 
@@ -169,12 +168,12 @@ class TestThirteenFMapper:
 class TestHoldingsStorage:
 
     def _make_row(self, cik="0001067983", issuer="APPLE INC", value=174523.0,
-                  status="CLOSE", shares=1_013_162.0):
+                  status="CLOSE", shares=1_013_162.0, cusip="037833100"):
         return {
             "cik": cik, "accession_number": "0001067983-23-000009",
             "form_type": "13F-HR", "filing_date": "2023-02-14",
             "as_of_date": "2022-12-31", "issuer_name": issuer,
-            "cusip": "037833100", "ticker": "AAPL",
+            "cusip": cusip, "ticker": "AAPL",
             "shares_held": shares, "value_reported": value,
             "value_unit": "USD_THOUSANDS", "price_at_filing": 130.73,
             "value_estimated": shares * 130.73,
@@ -189,7 +188,7 @@ class TestHoldingsStorage:
         assert rows[0]["issuer_name"] == "APPLE INC"
 
     def test_query_holdings_summary_totals(self):
-        save_holdings([self._make_row(), self._make_row(issuer="BAC", value=29631.0, status="NO_PRICE")])
+        save_holdings([self._make_row(), self._make_row(issuer="BAC", cusip="025816109", value=29631.0, status="NO_PRICE")])
         summary = query_holdings_summary()
         assert len(summary) == 1
         assert summary[0]["position_count"] == 2

@@ -21,17 +21,17 @@ Cross-validation logic:
 import argparse
 import logging
 
+from rich import box
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
-from rich import box
 
 from src import config
-from src.ingest.edgar_client import get_13f_filings, get_13f_document, SAMPLE_FILERS
+from src.ingest.edgar_client import SAMPLE_FILERS, get_13f_document, get_13f_filings
 from src.ingest.polygon_client import get_daily_bars, lookup_ticker_by_cusip, search_ticker_by_name
 from src.schema.canonical_mapper import CanonicalHolding
 from src.schema.holdings_mapper import ThirteenFMapper
-from src.storage.db import init_db, save_raw, save_holdings, query_holdings_summary
+from src.storage.db import init_db, query_holdings_summary, save_holdings, save_raw
 
 log     = logging.getLogger(__name__)
 console = Console()

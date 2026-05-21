@@ -5,13 +5,13 @@ Network calls are replaced with fixture data so these run offline.
 The DB is redirected to a tmp_path so nothing touches data/db.sqlite.
 """
 import json
-import pytest
 from unittest.mock import MagicMock
 
+import pytest
+
+import src.pipeline as pipeline_mod
 from src import config
 from src.storage import db
-import src.pipeline as pipeline_mod
-
 
 # ── Shared fixture data ────────────────────────────────────────────────────
 

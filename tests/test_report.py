@@ -5,12 +5,13 @@ Uses the same isolated_env pattern as test_pipeline.py — tmp DB, no real files
 """
 import csv
 import json
+
 import pytest
 
 from src import config
+from src import report as report_mod
 from src.storage import db
 from src.storage.db import _conn
-from src import report as report_mod
 
 
 @pytest.fixture(autouse=True)
@@ -33,7 +34,7 @@ def _seed_entity(cik="0001067983", name="BERKSHIRE HATHAWAY INC", entity_type="o
         "ticker": ticker,
         "sic_code": sic_code,
         "_mapper_assumptions": [
-            f"'fiscalYearEnd' → 'fiscal_year_end_mmdd': mapping is assumed, not confirmed"
+            "'fiscalYearEnd' → 'fiscal_year_end_mmdd': mapping is assumed, not confirmed"
         ],
         "_unmapped_fields": [],
     }

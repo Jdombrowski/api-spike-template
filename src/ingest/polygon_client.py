@@ -15,7 +15,6 @@ We use:
 """
 import logging
 from datetime import date, timedelta
-from typing import Any
 
 from src import config
 from src.ingest.http_client import get

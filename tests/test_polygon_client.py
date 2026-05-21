@@ -10,6 +10,7 @@ Each class fetches its response once via a class-scoped fixture to avoid
 hammering the free-tier rate limit (5 req/min).
 """
 import pytest
+
 from src import config
 from src.ingest import polygon_client
 

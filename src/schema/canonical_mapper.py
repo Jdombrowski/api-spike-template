@@ -17,7 +17,6 @@ its own mapper, same canonical output, reconciliation is straightforward.
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any
 
 log = logging.getLogger(__name__)
 

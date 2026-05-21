@@ -66,6 +66,20 @@ export: ## Export findings to timestamped CSVs in data/exports/
 run-holdings: ## Extract and cross-validate 13F positions  (usage: make run-holdings CIK=0001067983 VALIDATE_TOP=10)
 	$(PY) -m src.holdings_pipeline $(if $(CIK),--cik $(CIK),) --validate-top $(or $(VALIDATE_TOP),10)
 
+.PHONY: run-bulk
+run-bulk: ## Ingest DERA 13F bulk datasets  (usage: make run-bulk QUARTERS=8 CIK="0001067983 0001364742")
+	$(PY) -m src.ingest.edgar_bulk $(if $(CIK),--cik $(CIK),) --quarters $(or $(QUARTERS),8)
+
+.PHONY: serve
+serve: ## Start the 13F holdings API on localhost:8000  (docs at /docs)
+	$(VENV)/bin/uvicorn src.holdings_api:app --reload --port 8000
+
+# ── Code quality ───────────────────────────────────────────────────────────────
+.PHONY: format
+format: ## Auto-format and lint with ruff
+	$(VENV)/bin/ruff check --fix src/ tests/
+	$(VENV)/bin/ruff format src/ tests/
+
 # ── Clean ──────────────────────────────────────────────────────────────────────
 .PHONY: clean
 clean: ## Remove byte-compiled files and test artifacts

@@ -9,13 +9,12 @@ This is the layer you'd swap out for httpx or aiohttp in production.
 Architecture is intentionally identical to what you'd write for a custodian API.
 """
 import json
+import logging
 import random
 import time
-import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum, auto
-from pathlib import Path
 from typing import Any, Optional
 
 import requests
@@ -219,6 +218,17 @@ def get_text(
 ) -> str:
     """GET → raw text (XML, CSV, or any non-JSON response). Same retry logic as get()."""
     return _fetch(url, source=source, params=params, headers=headers).text
+
+
+def get_bytes(
+    url: str,
+    *,
+    source: str,
+    params: dict | None  = None,
+    headers: dict | None = None,
+) -> bytes:
+    """GET → raw bytes (ZIP archives, binary content). Same retry logic as get()."""
+    return _fetch(url, source=source, params=params, headers=headers).content
 
 
 def _save_sample(data: Any, source: str, name: str):
