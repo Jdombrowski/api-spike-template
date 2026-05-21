@@ -89,6 +89,30 @@ def init_db():
                 polygon_raw_id  INTEGER REFERENCES raw_responses(id),
                 reconciled_at   TEXT    NOT NULL DEFAULT (datetime('now'))
             );
+
+            -- 13F positions parsed from InfoTable XML
+            -- value_reported is in USD THOUSANDS per SEC 13F reporting rules
+            -- Downstream consumers MUST multiply by 1000 for actual USD value
+            CREATE TABLE IF NOT EXISTS holdings (
+                id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                cik                 TEXT    NOT NULL,
+                accession_number    TEXT,
+                form_type           TEXT,
+                filing_date         TEXT,
+                as_of_date          TEXT,               -- quarter-end date (derived from filing_date)
+                issuer_name         TEXT,
+                cusip               TEXT,
+                ticker              TEXT,               -- NULL until CUSIP resolved via Polygon
+                shares_held         REAL,
+                value_reported      REAL,               -- in USD thousands
+                value_unit          TEXT    NOT NULL DEFAULT 'USD_THOUSANDS',
+                price_at_filing     REAL,               -- Polygon closing price at as_of_date
+                value_estimated     REAL,               -- shares_held × price_at_filing
+                validation_ratio    REAL,               -- value_estimated / (value_reported × 1000)
+                validation_status   TEXT,               -- CLOSE | DIVERGENT | NO_PRICE
+                raw_response_id     INTEGER REFERENCES raw_responses(id),
+                created_at          TEXT    NOT NULL DEFAULT (datetime('now'))
+            );
         """)
     log.info("[storage] database initialized at %s", config.DB_PATH)
 
@@ -174,3 +198,64 @@ def query_reconciliation_summary() -> list[dict]:
             GROUP BY overall_status
         """).fetchall()
         return [dict(r) for r in rows]
+
+
+def save_holdings(holdings: list[dict], raw_id: int | None = None) -> None:
+    """Persist a batch of parsed + cross-validated holdings."""
+    if not holdings:
+        return
+    with _conn() as con:
+        con.executemany("""
+            INSERT INTO holdings
+              (cik, accession_number, form_type, filing_date, as_of_date,
+               issuer_name, cusip, ticker, shares_held, value_reported, value_unit,
+               price_at_filing, value_estimated, validation_ratio, validation_status,
+               raw_response_id)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """, [
+            (
+                h.get("cik"),           h.get("accession_number"),
+                h.get("form_type"),     h.get("filing_date"),
+                h.get("as_of_date"),    h.get("issuer_name"),
+                h.get("cusip"),         h.get("ticker"),
+                h.get("shares_held"),   h.get("value_reported"),
+                h.get("value_unit"),    h.get("price_at_filing"),
+                h.get("value_estimated"), h.get("validation_ratio"),
+                h.get("validation_status"), raw_id,
+            )
+            for h in holdings
+        ])
+    log.info("[storage] saved %d holdings", len(holdings))
+
+
+def query_holdings_summary() -> list[dict]:
+    """Per-filer totals and cross-validation hit rate."""
+    with _conn() as con:
+        rows = con.execute("""
+            SELECT
+                cik,
+                COUNT(*)                                                    AS position_count,
+                SUM(CASE WHEN validation_status = 'CLOSE' THEN 1 ELSE 0 END) AS validated_count,
+                ROUND(SUM(value_reported) / 1000.0, 1)                     AS total_value_millions,
+                MAX(filing_date)                                            AS latest_filing
+            FROM holdings
+            GROUP BY cik
+            ORDER BY total_value_millions DESC
+        """).fetchall()
+    return [dict(r) for r in rows]
+
+
+def query_holdings(cik: str | None = None, limit: int = 100) -> list[dict]:
+    """Return holdings rows sorted by reported value, optionally filtered by CIK."""
+    with _conn() as con:
+        if cik:
+            rows = con.execute(
+                "SELECT * FROM holdings WHERE cik = ? ORDER BY value_reported DESC LIMIT ?",
+                (cik, limit),
+            ).fetchall()
+        else:
+            rows = con.execute(
+                "SELECT * FROM holdings ORDER BY cik, value_reported DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+    return [dict(r) for r in rows]

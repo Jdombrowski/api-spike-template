@@ -62,6 +62,10 @@ report: ## Print a rich terminal summary of all investigation findings
 export: ## Export findings to timestamped CSVs in data/exports/
 	$(PY) -m src.report --export
 
+.PHONY: run-holdings
+run-holdings: ## Extract and cross-validate 13F positions  (usage: make run-holdings CIK=0001067983)
+	$(PY) -m src.holdings_pipeline $(if $(CIK),--cik $(CIK),)
+
 # ── Clean ──────────────────────────────────────────────────────────────────────
 .PHONY: clean
 clean: ## Remove byte-compiled files and test artifacts

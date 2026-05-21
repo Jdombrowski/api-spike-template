@@ -17,7 +17,7 @@ import logging
 from typing import Any
 
 from src import config
-from src.ingest.http_client import get
+from src.ingest.http_client import get, get_text
 
 log = logging.getLogger(__name__)
 
@@ -109,3 +109,52 @@ def get_filing_index(cik: str, accession_number: str) -> dict:
     acc_clean = accession_number.replace("-", "")
     url = f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{acc_clean}/index.json"
     return get(url, source="edgar", headers=_HEADERS)
+
+
+def get_13f_document(cik: str, accession_number: str) -> str:
+    """
+    Fetch the InfoTable XML from a 13F-HR filing.
+
+    Steps:
+      1. Fetch the filing index to locate the INFORMATION TABLE document
+      2. Fetch that document as raw XML text
+
+    Returns raw XML — pass to ThirteenFMapper.parse().
+    """
+    index     = get_filing_index(cik, accession_number)
+    filename  = _find_info_table_filename(index, accession_number)
+    acc_clean = accession_number.replace("-", "")
+    url = f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{acc_clean}/{filename}"
+    log.info("[edgar] fetching InfoTable XML: %s", filename)
+    return get_text(url, source="edgar", headers=_HEADERS)
+
+
+def _find_info_table_filename(index: dict, accession_number: str) -> str:
+    """
+    Locate the INFORMATION TABLE document within a filing index.
+
+    Priority order:
+      1. Item explicitly typed "INFORMATION TABLE"
+      2. Any XML file with "info" in the name (common naming convention)
+      3. Any XML file (last resort)
+
+    Raises LookupError if nothing suitable is found.
+    """
+    items = index.get("directory", {}).get("item", [])
+
+    for item in items:
+        if item.get("type", "").upper() == "INFORMATION TABLE":
+            return item["name"]
+
+    for item in items:
+        name = item.get("name", "").lower()
+        if name.endswith(".xml") and "info" in name:
+            return item["name"]
+
+    for item in items:
+        if item.get("name", "").lower().endswith(".xml"):
+            return item["name"]
+
+    raise LookupError(
+        f"No InfoTable document found in filing index for accession {accession_number}"
+    )

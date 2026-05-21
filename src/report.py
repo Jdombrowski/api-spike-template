@@ -20,7 +20,7 @@ from rich.table import Table
 from rich import box
 
 from src import config
-from src.storage.db import _conn
+from src.storage.db import _conn, init_db, query_holdings_summary
 
 log = logging.getLogger(__name__)
 console = Console()
@@ -141,6 +141,7 @@ def query_open_assumptions() -> list[dict]:
 
 def report() -> None:
     """Rich terminal summary of all investigation findings."""
+    init_db()   # ensure holdings table exists for DBs created before Stage 2
     summary    = query_ingestion_summary()
     entities   = query_entities()
     recons     = query_reconciliation_detail()
@@ -221,6 +222,29 @@ def report() -> None:
     else:
         for a in assumptions:
             console.print(f"  [yellow]⚠[/yellow]  {a['assumption']}")
+
+    # ── Holdings summary (populated by make run-holdings) ──────────────────
+    holdings_rows = query_holdings_summary()
+    if holdings_rows:
+        console.rule("[bold]13F Holdings")
+        table = Table(box=box.SIMPLE, show_header=True, header_style="bold")
+        table.add_column("CIK",           style="dim")
+        table.add_column("Positions",     justify="right")
+        table.add_column("Validated",     justify="right")
+        table.add_column("Value (USD M)", justify="right")
+        table.add_column("Latest filing")
+
+        for r in holdings_rows:
+            validated = r.get("validated_count") or 0
+            total     = r.get("position_count")  or 0
+            table.add_row(
+                r["cik"],
+                str(total),
+                f"{validated}/{total}",
+                f"${r.get('total_value_millions') or 0:,.1f}",
+                r.get("latest_filing") or "—",
+            )
+        console.print(table)
 
     console.print()
 

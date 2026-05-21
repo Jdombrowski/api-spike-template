@@ -104,19 +104,16 @@ def _breaker(name: str) -> CircuitBreaker:
     return _breakers[name]
 
 
-def get(
+def _fetch(
     url: str,
     *,
-    source: str,                          # name for circuit breaker + logging
-    params: dict | None   = None,
-    headers: dict | None  = None,
-    save_sample: bool     = False,        # snapshot raw response to disk
-    sample_name: str      = "",
-) -> Any:
+    source: str,
+    params: dict | None  = None,
+    headers: dict | None = None,
+) -> requests.Response:
     """
-    GET with retry + backoff + circuit breaker.
-    Returns parsed JSON on success.
-    Raises on unrecoverable errors (4xx except 429, circuit open, exhausted retries).
+    Core retry + circuit-breaker loop. Returns the raw Response object.
+    Called by get() and get_text() — don't call directly.
     """
     breaker = _breaker(source)
     session = requests.Session()
@@ -125,12 +122,7 @@ def get(
         breaker.allow_request()   # raises CircuitOpenError if open
 
         try:
-            resp = session.get(
-                url,
-                params=params,
-                headers=headers,
-                timeout=config.REQUEST_TIMEOUT,
-            )
+            resp = session.get(url, params=params, headers=headers, timeout=config.REQUEST_TIMEOUT)
 
             # ── Don't retry client errors ──────────────────────────────
             if resp.status_code == 400:
@@ -142,8 +134,7 @@ def get(
 
             # ── Rate limited — respect Retry-After ────────────────────
             if resp.status_code == 429:
-                retry_after = int(resp.headers.get("Retry-After", 0))
-                wait = max(retry_after, _jitter(attempt))
+                wait = max(int(resp.headers.get("Retry-After", 0)), _jitter(attempt))
                 log.warning("[%s] 429 rate limited — waiting %.1fs", source, wait)
                 time.sleep(wait)
                 continue
@@ -156,20 +147,14 @@ def get(
                 wait = _jitter(attempt)
                 log.warning(
                     "[%s] %d server error (attempt %d/%d) — retrying in %.1fs",
-                    source, resp.status_code, attempt + 1, config.MAX_RETRIES, wait
+                    source, resp.status_code, attempt + 1, config.MAX_RETRIES, wait,
                 )
                 time.sleep(wait)
                 continue
 
             resp.raise_for_status()
             breaker.record_success()
-
-            data = resp.json()
-
-            if save_sample:
-                _save_sample(data, source, sample_name or url.split("/")[-1])
-
-            return data
+            return resp
 
         except requests.Timeout:
             breaker.record_failure()
@@ -183,6 +168,33 @@ def get(
             raise   # non-retryable — propagate immediately
 
     raise RuntimeError(f"[{source}] exhausted {config.MAX_RETRIES} retries on {url}")
+
+
+def get(
+    url: str,
+    *,
+    source: str,
+    params: dict | None  = None,
+    headers: dict | None = None,
+    save_sample: bool    = False,
+    sample_name: str     = "",
+) -> Any:
+    """GET → parsed JSON. Retry + backoff + circuit breaker via _fetch()."""
+    data = _fetch(url, source=source, params=params, headers=headers).json()
+    if save_sample:
+        _save_sample(data, source, sample_name or url.split("/")[-1])
+    return data
+
+
+def get_text(
+    url: str,
+    *,
+    source: str,
+    params: dict | None  = None,
+    headers: dict | None = None,
+) -> str:
+    """GET → raw text (XML, CSV, or any non-JSON response). Same retry logic as get()."""
+    return _fetch(url, source=source, params=params, headers=headers).text
 
 
 def _save_sample(data: Any, source: str, name: str):
