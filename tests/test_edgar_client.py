@@ -9,6 +9,7 @@ must be set (EDGAR_USER_AGENT in .env) — SEC blocks anonymous requests.
 Assertions are strictly against raw API response structure — no internal
 field mappings or transformation logic tested here.
 """
+
 import pytest
 
 from src import config

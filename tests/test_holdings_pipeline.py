@@ -6,6 +6,7 @@ Tests for the 13F holdings pipeline:
   - holdings_pipeline.run(): end-to-end with mocked network calls
   - Cross-validation: ratio calculation and status classification
 """
+
 from unittest.mock import MagicMock
 
 import pytest
@@ -18,6 +19,7 @@ from src.storage.db import query_holdings, query_holdings_summary, save_holdings
 
 # ── Fixtures ───────────────────────────────────────────────────────────────
 
+
 @pytest.fixture(autouse=True)
 def isolated_env(monkeypatch, tmp_path):
     monkeypatch.setattr(config, "DB_PATH", tmp_path / "test.db")
@@ -27,8 +29,8 @@ def isolated_env(monkeypatch, tmp_path):
 
 
 _FILING_META = {
-    "form":             "13F-HR",
-    "filing_date":      "2023-02-14",
+    "form": "13F-HR",
+    "filing_date": "2023-02-14",
     "accession_number": "0001067983-23-000009",
 }
 
@@ -80,8 +82,8 @@ _PRN_XML = """\
 
 # ── derive_quarter_end ─────────────────────────────────────────────────────
 
-class TestDeriveQuarterEnd:
 
+class TestDeriveQuarterEnd:
     def test_jan_filing_returns_prior_q4(self):
         assert derive_quarter_end("2023-01-20") == "2022-12-31"
 
@@ -106,8 +108,8 @@ class TestDeriveQuarterEnd:
 
 # ── ThirteenFMapper ────────────────────────────────────────────────────────
 
-class TestThirteenFMapper:
 
+class TestThirteenFMapper:
     @pytest.fixture
     def mapper(self):
         return ThirteenFMapper("0001067983", _FILING_META)
@@ -138,11 +140,11 @@ class TestThirteenFMapper:
 
     def test_ticker_is_none(self, mapper):
         h = mapper.parse(_INFO_TABLE_XML)[0]
-        assert h.ticker is None   # not in 13F XML
+        assert h.ticker is None  # not in 13F XML
 
     def test_as_of_date_derived_from_filing_date(self, mapper):
         h = mapper.parse(_INFO_TABLE_XML)[0]
-        assert h.as_of_date == "2022-12-31"   # Feb 2023 filing → Q4 2022
+        assert h.as_of_date == "2022-12-31"  # Feb 2023 filing → Q4 2022
 
     def test_canonical_id_includes_cik_accession_cusip(self, mapper):
         h = mapper.parse(_INFO_TABLE_XML)[0]
@@ -156,7 +158,7 @@ class TestThirteenFMapper:
 
     def test_namespace_stripped_correctly(self, mapper):
         holdings = mapper.parse(_INFO_TABLE_XML)
-        assert len(holdings) == 2   # namespace must not cause parse failure
+        assert len(holdings) == 2  # namespace must not cause parse failure
 
     def test_invalid_xml_raises_value_error(self, mapper):
         with pytest.raises(ValueError, match="XML parse error"):
@@ -165,17 +167,30 @@ class TestThirteenFMapper:
 
 # ── DB layer ───────────────────────────────────────────────────────────────
 
-class TestHoldingsStorage:
 
-    def _make_row(self, cik="0001067983", issuer="APPLE INC", value=174523.0,
-                  status="CLOSE", shares=1_013_162.0, cusip="037833100"):
+class TestHoldingsStorage:
+    def _make_row(
+        self,
+        cik="0001067983",
+        issuer="APPLE INC",
+        value=174523.0,
+        status="CLOSE",
+        shares=1_013_162.0,
+        cusip="037833100",
+    ):
         return {
-            "cik": cik, "accession_number": "0001067983-23-000009",
-            "form_type": "13F-HR", "filing_date": "2023-02-14",
-            "as_of_date": "2022-12-31", "issuer_name": issuer,
-            "cusip": cusip, "ticker": "AAPL",
-            "shares_held": shares, "value_reported": value,
-            "value_unit": "USD_THOUSANDS", "price_at_filing": 130.73,
+            "cik": cik,
+            "accession_number": "0001067983-23-000009",
+            "form_type": "13F-HR",
+            "filing_date": "2023-02-14",
+            "as_of_date": "2022-12-31",
+            "issuer_name": issuer,
+            "cusip": cusip,
+            "ticker": "AAPL",
+            "shares_held": shares,
+            "value_reported": value,
+            "value_unit": "USD_THOUSANDS",
+            "price_at_filing": 130.73,
             "value_estimated": shares * 130.73,
             "validation_ratio": (shares * 130.73) / (value * 1000),
             "validation_status": status,
@@ -188,11 +203,16 @@ class TestHoldingsStorage:
         assert rows[0]["issuer_name"] == "APPLE INC"
 
     def test_query_holdings_summary_totals(self):
-        save_holdings([self._make_row(), self._make_row(issuer="BAC", cusip="025816109", value=29631.0, status="NO_PRICE")])
+        save_holdings(
+            [
+                self._make_row(),
+                self._make_row(issuer="BAC", cusip="025816109", value=29631.0, status="NO_PRICE"),
+            ]
+        )
         summary = query_holdings_summary()
         assert len(summary) == 1
         assert summary[0]["position_count"] == 2
-        assert summary[0]["validated_count"] == 1   # one CLOSE
+        assert summary[0]["validated_count"] == 1  # one CLOSE
 
     def test_save_empty_list_is_noop(self):
         save_holdings([])
@@ -207,28 +227,36 @@ class TestHoldingsStorage:
 
 # ── Cross-validation logic ─────────────────────────────────────────────────
 
-class TestCrossValidation:
 
+class TestCrossValidation:
     def _make_holding(self, shares=1_000_000.0, value=130_000.0, entity_name="APPLE INC"):
         from src.schema.canonical_mapper import CanonicalHolding
+
         return CanonicalHolding(
-            source="edgar_13f", source_entity_id="0001067983",
+            source="edgar_13f",
+            source_entity_id="0001067983",
             canonical_id="0001067983:acc:cusip",
-            entity_name=entity_name, ticker=None, cusip="037833100",
-            shares_held=shares, market_value_usd=value,
-            value_unit="USD_THOUSANDS", as_of_date="2022-12-31",
-            filing_date="2023-02-14", form_type="13F-HR",
-            assumptions=[], unmapped_fields=[],
+            entity_name=entity_name,
+            ticker=None,
+            cusip="037833100",
+            shares_held=shares,
+            market_value_usd=value,
+            value_unit="USD_THOUSANDS",
+            as_of_date="2022-12-31",
+            filing_date="2023-02-14",
+            form_type="13F-HR",
+            assumptions=[],
+            unmapped_fields=[],
         )
 
     def test_close_when_ratio_within_threshold(self, monkeypatch):
-        monkeypatch.setattr(hp_mod, "_resolve_ticker",  lambda h: "AAPL")
+        monkeypatch.setattr(hp_mod, "_resolve_ticker", lambda h: "AAPL")
         monkeypatch.setattr(hp_mod, "_fetch_closing_price", lambda t, d: 130.0)
         results = hp_mod._cross_validate([self._make_holding(shares=1_000_000, value=130_000)])
         assert results[0]["validation_status"] == "CLOSE"
 
     def test_divergent_when_ratio_outside_threshold(self, monkeypatch):
-        monkeypatch.setattr(hp_mod, "_resolve_ticker",  lambda h: "AAPL")
+        monkeypatch.setattr(hp_mod, "_resolve_ticker", lambda h: "AAPL")
         monkeypatch.setattr(hp_mod, "_fetch_closing_price", lambda t, d: 300.0)  # 2× too high
         results = hp_mod._cross_validate([self._make_holding(shares=1_000_000, value=130_000)])
         assert results[0]["validation_status"] == "DIVERGENT"
@@ -239,7 +267,7 @@ class TestCrossValidation:
         assert results[0]["validation_status"] == "NO_PRICE"
 
     def test_no_price_when_polygon_returns_no_bar(self, monkeypatch):
-        monkeypatch.setattr(hp_mod, "_resolve_ticker",      lambda h: "AAPL")
+        monkeypatch.setattr(hp_mod, "_resolve_ticker", lambda h: "AAPL")
         monkeypatch.setattr(hp_mod, "_fetch_closing_price", lambda t, d: None)
         results = hp_mod._cross_validate([self._make_holding()])
         assert results[0]["validation_status"] == "NO_PRICE"
@@ -254,12 +282,12 @@ class TestCrossValidation:
 
 # ── Pipeline end-to-end ────────────────────────────────────────────────────
 
-class TestHoldingsPipelineRun:
 
+class TestHoldingsPipelineRun:
     def test_run_stores_holdings(self, monkeypatch):
-        monkeypatch.setattr(hp_mod, "get_13f_filings",  lambda cik: [_FILING_META])
+        monkeypatch.setattr(hp_mod, "get_13f_filings", lambda cik: [_FILING_META])
         monkeypatch.setattr(hp_mod, "get_13f_document", lambda cik, acc: _INFO_TABLE_XML)
-        monkeypatch.setattr(hp_mod, "_resolve_ticker",      lambda h: None)
+        monkeypatch.setattr(hp_mod, "_resolve_ticker", lambda h: None)
         monkeypatch.setattr(hp_mod, "_fetch_closing_price", lambda t, d: None)
 
         hp_mod.run(["0001067983"])
@@ -270,37 +298,40 @@ class TestHoldingsPipelineRun:
 
     def test_run_skips_cik_on_filings_fetch_error(self, monkeypatch):
         monkeypatch.setattr(
-            hp_mod, "get_13f_filings",
+            hp_mod,
+            "get_13f_filings",
             MagicMock(side_effect=LookupError("404")),
         )
-        hp_mod.run(["0001067983"])   # should not raise
+        hp_mod.run(["0001067983"])  # should not raise
         assert query_holdings("0001067983") == []
 
     def test_run_skips_filing_on_xml_fetch_error(self, monkeypatch):
-        monkeypatch.setattr(hp_mod, "get_13f_filings",  lambda cik: [_FILING_META])
+        monkeypatch.setattr(hp_mod, "get_13f_filings", lambda cik: [_FILING_META])
         monkeypatch.setattr(
-            hp_mod, "get_13f_document",
+            hp_mod,
+            "get_13f_document",
             MagicMock(side_effect=LookupError("404")),
         )
-        hp_mod.run(["0001067983"])   # should not raise
+        hp_mod.run(["0001067983"])  # should not raise
         assert query_holdings("0001067983") == []
 
     def test_run_skips_filing_on_xml_parse_error(self, monkeypatch):
-        monkeypatch.setattr(hp_mod, "get_13f_filings",  lambda cik: [_FILING_META])
+        monkeypatch.setattr(hp_mod, "get_13f_filings", lambda cik: [_FILING_META])
         monkeypatch.setattr(hp_mod, "get_13f_document", lambda cik, acc: "<broken xml")
-        hp_mod.run(["0001067983"])   # should not raise
+        hp_mod.run(["0001067983"])  # should not raise
         assert query_holdings("0001067983") == []
 
 
 # ── validate_top ───────────────────────────────────────────────────────────
 
+
 class TestValidateTop:
     """validate_top limits Polygon calls to the top-N positions by reported value."""
 
     def test_only_top_n_positions_are_cross_validated(self, monkeypatch):
-        monkeypatch.setattr(hp_mod, "get_13f_filings",      lambda cik: [_FILING_META])
-        monkeypatch.setattr(hp_mod, "get_13f_document",     lambda cik, acc: _INFO_TABLE_XML)
-        monkeypatch.setattr(hp_mod, "_resolve_ticker",      lambda h: "AAPL")
+        monkeypatch.setattr(hp_mod, "get_13f_filings", lambda cik: [_FILING_META])
+        monkeypatch.setattr(hp_mod, "get_13f_document", lambda cik, acc: _INFO_TABLE_XML)
+        monkeypatch.setattr(hp_mod, "_resolve_ticker", lambda h: "AAPL")
         monkeypatch.setattr(hp_mod, "_fetch_closing_price", lambda t, d: 130.0)
 
         hp_mod.run(["0001067983"], validate_top=1)
@@ -315,9 +346,9 @@ class TestValidateTop:
         assert bac["validation_status"] == "NO_PRICE"
 
     def test_remainder_stored_as_no_price(self, monkeypatch):
-        monkeypatch.setattr(hp_mod, "get_13f_filings",      lambda cik: [_FILING_META])
-        monkeypatch.setattr(hp_mod, "get_13f_document",     lambda cik, acc: _INFO_TABLE_XML)
-        monkeypatch.setattr(hp_mod, "_resolve_ticker",      lambda h: None)
+        monkeypatch.setattr(hp_mod, "get_13f_filings", lambda cik: [_FILING_META])
+        monkeypatch.setattr(hp_mod, "get_13f_document", lambda cik, acc: _INFO_TABLE_XML)
+        monkeypatch.setattr(hp_mod, "_resolve_ticker", lambda h: None)
         monkeypatch.setattr(hp_mod, "_fetch_closing_price", lambda t, d: None)
 
         hp_mod.run(["0001067983"], validate_top=0)
@@ -326,10 +357,9 @@ class TestValidateTop:
         assert all(r["validation_status"] == "NO_PRICE" for r in rows)
 
     def test_validate_top_larger_than_positions_validates_all(self, monkeypatch):
-        validated = []
-        monkeypatch.setattr(hp_mod, "get_13f_filings",      lambda cik: [_FILING_META])
-        monkeypatch.setattr(hp_mod, "get_13f_document",     lambda cik, acc: _INFO_TABLE_XML)
-        monkeypatch.setattr(hp_mod, "_resolve_ticker",      lambda h: "TICK")
+        monkeypatch.setattr(hp_mod, "get_13f_filings", lambda cik: [_FILING_META])
+        monkeypatch.setattr(hp_mod, "get_13f_document", lambda cik, acc: _INFO_TABLE_XML)
+        monkeypatch.setattr(hp_mod, "_resolve_ticker", lambda h: "TICK")
         monkeypatch.setattr(hp_mod, "_fetch_closing_price", lambda t, d: 130.0)
 
         hp_mod.run(["0001067983"], validate_top=100)
@@ -337,5 +367,6 @@ class TestValidateTop:
         rows = query_holdings("0001067983")
         # all 2 positions attempted (may be CLOSE/DIVERGENT, not NO_PRICE due to skipping)
         assert len(rows) == 2
-        assert all(r["validation_status"] != "NO_PRICE" or r["price_at_filing"] is None
-                   for r in rows)
+        assert all(
+            r["validation_status"] != "NO_PRICE" or r["price_at_filing"] is None for r in rows
+        )

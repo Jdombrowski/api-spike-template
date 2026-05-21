@@ -7,6 +7,7 @@ Tests for the DERA bulk ingest pipeline:
   - DB round-trip: save_holdings idempotency via UNIQUE constraint
   - New DB queries: delta, timeline, security_holders
 """
+
 import io
 import zipfile
 
@@ -30,6 +31,7 @@ from src.storage.db import (
 
 # ── Fixtures ───────────────────────────────────────────────────────────────
 
+
 @pytest.fixture(autouse=True)
 def isolated_env(monkeypatch, tmp_path):
     monkeypatch.setattr(config, "DB_PATH", tmp_path / "test.db")
@@ -40,8 +42,8 @@ def isolated_env(monkeypatch, tmp_path):
 
 # ── _iter_quarters ─────────────────────────────────────────────────────────
 
-class TestIterQuarters:
 
+class TestIterQuarters:
     def test_yields_correct_count(self):
         quarters = list(_iter_quarters(4))
         assert len(quarters) == 4
@@ -71,8 +73,8 @@ class TestIterQuarters:
 
 # ── _normalise_accession ───────────────────────────────────────────────────
 
-class TestNormaliseAccession:
 
+class TestNormaliseAccession:
     def test_already_dashed_unchanged(self):
         assert _normalise_accession("0001067983-23-000009") == "0001067983-23-000009"
 
@@ -89,8 +91,8 @@ class TestNormaliseAccession:
 
 # ── _matches_target ────────────────────────────────────────────────────────
 
-class TestMatchesTarget:
 
+class TestMatchesTarget:
     def test_exact_padded_match(self):
         assert _matches_target("1067983", "0001067983", {"0001067983"})
 
@@ -106,8 +108,10 @@ class TestMatchesTarget:
 
 # ── _parse_zip ─────────────────────────────────────────────────────────────
 
+
 def _make_zip(submission_rows: list[dict], infotable_rows: list[dict]) -> bytes:
     """Build an in-memory ZIP with SUBMISSION.tsv and INFOTABLE.tsv."""
+
     def tsv(rows: list[dict]) -> str:
         if not rows:
             return ""
@@ -119,46 +123,45 @@ def _make_zip(submission_rows: list[dict], infotable_rows: list[dict]) -> bytes:
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as zf:
-        zf.writestr("2024q3_SUBMISSION.tsv",  tsv(submission_rows))
-        zf.writestr("2024q3_INFOTABLE.tsv",   tsv(infotable_rows))
+        zf.writestr("2024q3_SUBMISSION.tsv", tsv(submission_rows))
+        zf.writestr("2024q3_INFOTABLE.tsv", tsv(infotable_rows))
     return buf.getvalue()
 
 
 _SUBMISSION = [
     {
-        "ACCESSION_NUMBER":    "0001067983-24-000009",
-        "FILINGMANAGER_CIK":   "0001067983",
-        "FILINGMANAGER_NAME":  "BERKSHIRE HATHAWAY INC",
-        "PERIOD_OF_REPORT":    "2024-09-30",
-        "FILED":               "2024-11-14",
-        "FORM_TYPE":           "13F-HR",
+        "ACCESSION_NUMBER": "0001067983-24-000009",
+        "FILINGMANAGER_CIK": "0001067983",
+        "FILINGMANAGER_NAME": "BERKSHIRE HATHAWAY INC",
+        "PERIOD_OF_REPORT": "2024-09-30",
+        "FILED": "2024-11-14",
+        "FORM_TYPE": "13F-HR",
     }
 ]
 
 _INFOTABLE = [
     {
         "ACCESSION_NUMBER": "0001067983-24-000009",
-        "NAMEOFISSUER":     "APPLE INC",
-        "CUSIP":            "037833100",
-        "VALUE":            "69000000",      # ~$69B full USD
-        "SSHPRNAMT":        "300000000",
-        "SSHPRNAMTTYPE":    "SH",
+        "NAMEOFISSUER": "APPLE INC",
+        "CUSIP": "037833100",
+        "VALUE": "69000000",  # ~$69B full USD
+        "SSHPRNAMT": "300000000",
+        "SSHPRNAMTTYPE": "SH",
         "INVESTMENTDISCRETION": "SOLE",
     },
     {
         "ACCESSION_NUMBER": "0001067983-24-000009",
-        "NAMEOFISSUER":     "AMERICAN EXPRESS CO",
-        "CUSIP":            "025816109",
-        "VALUE":            "41000000",
-        "SSHPRNAMT":        "151610700",
-        "SSHPRNAMTTYPE":    "SH",
+        "NAMEOFISSUER": "AMERICAN EXPRESS CO",
+        "CUSIP": "025816109",
+        "VALUE": "41000000",
+        "SSHPRNAMT": "151610700",
+        "SSHPRNAMTTYPE": "SH",
         "INVESTMENTDISCRETION": "SOLE",
     },
 ]
 
 
 class TestParseZip:
-
     def test_returns_correct_row_count(self):
         rows = _parse_zip(_make_zip(_SUBMISSION, _INFOTABLE), {"0001067983"})
         assert len(rows) == 2
@@ -203,22 +206,30 @@ class TestParseZip:
 
 # ── Idempotent re-ingest ───────────────────────────────────────────────────
 
-class TestSaveHoldingsIdempotent:
 
+class TestSaveHoldingsIdempotent:
     def _row(self, cusip="037833100"):
         return {
-            "cik": "0001067983", "accession_number": "0001067983-24-000009",
-            "form_type": "13F-HR", "filing_date": "2024-11-14",
-            "as_of_date": "2024-09-30", "issuer_name": "APPLE INC",
-            "cusip": cusip, "ticker": None, "shares_held": 300_000_000.0,
-            "value_reported": 69_000_000.0, "value_unit": "USD_THOUSANDS",
-            "price_at_filing": None, "value_estimated": None,
-            "validation_ratio": None, "validation_status": None,
+            "cik": "0001067983",
+            "accession_number": "0001067983-24-000009",
+            "form_type": "13F-HR",
+            "filing_date": "2024-11-14",
+            "as_of_date": "2024-09-30",
+            "issuer_name": "APPLE INC",
+            "cusip": cusip,
+            "ticker": None,
+            "shares_held": 300_000_000.0,
+            "value_reported": 69_000_000.0,
+            "value_unit": "USD_THOUSANDS",
+            "price_at_filing": None,
+            "value_estimated": None,
+            "validation_ratio": None,
+            "validation_status": None,
         }
 
     def test_duplicate_save_does_not_raise(self):
         save_holdings([self._row()])
-        save_holdings([self._row()])   # second save — should be silently ignored
+        save_holdings([self._row()])  # second save — should be silently ignored
 
     def test_duplicate_save_does_not_double_count(self):
         save_holdings([self._row()])
@@ -236,32 +247,43 @@ class TestSaveHoldingsIdempotent:
 
 # ── New DB queries ─────────────────────────────────────────────────────────
 
+
 def _seed(cik, as_of_date, cusip, shares, value, accession="ACC-1"):
-    save_holdings([{
-        "cik": cik, "accession_number": accession,
-        "form_type": "13F-HR", "filing_date": as_of_date,
-        "as_of_date": as_of_date, "issuer_name": f"ISSUER {cusip}",
-        "cusip": cusip, "ticker": None,
-        "shares_held": float(shares), "value_reported": float(value),
-        "value_unit": "USD_THOUSANDS",
-        "price_at_filing": None, "value_estimated": None,
-        "validation_ratio": None, "validation_status": None,
-    }])
+    save_holdings(
+        [
+            {
+                "cik": cik,
+                "accession_number": accession,
+                "form_type": "13F-HR",
+                "filing_date": as_of_date,
+                "as_of_date": as_of_date,
+                "issuer_name": f"ISSUER {cusip}",
+                "cusip": cusip,
+                "ticker": None,
+                "shares_held": float(shares),
+                "value_reported": float(value),
+                "value_unit": "USD_THOUSANDS",
+                "price_at_filing": None,
+                "value_estimated": None,
+                "validation_ratio": None,
+                "validation_status": None,
+            }
+        ]
+    )
 
 
 class TestHoldingsDelta:
-
     def test_new_position_detected(self):
         _seed("CIK1", "2024-06-30", "CUSIP1", 1000, 100, "ACC-1")
         _seed("CIK1", "2024-09-30", "CUSIP1", 1000, 100, "ACC-2")
-        _seed("CIK1", "2024-09-30", "CUSIP2", 500,  50,  "ACC-2")
+        _seed("CIK1", "2024-09-30", "CUSIP2", 500, 50, "ACC-2")
         rows = query_holdings_delta("CIK1", "2024-06-30", "2024-09-30")
         new_rows = [r for r in rows if r["change_type"] == "NEW"]
         assert any(r["cusip"] == "CUSIP2" for r in new_rows)
 
     def test_exited_position_detected(self):
         _seed("CIK1", "2024-06-30", "CUSIP1", 1000, 100, "ACC-1")
-        _seed("CIK1", "2024-06-30", "CUSIP2", 500,  50,  "ACC-1")
+        _seed("CIK1", "2024-06-30", "CUSIP2", 500, 50, "ACC-1")
         _seed("CIK1", "2024-09-30", "CUSIP1", 1000, 100, "ACC-2")
         rows = query_holdings_delta("CIK1", "2024-06-30", "2024-09-30")
         exited = [r for r in rows if r["change_type"] == "EXITED"]
@@ -275,7 +297,7 @@ class TestHoldingsDelta:
 
     def test_decreased_position_detected(self):
         _seed("CIK1", "2024-06-30", "CUSIP1", 1000, 100, "ACC-1")
-        _seed("CIK1", "2024-09-30", "CUSIP1", 800,  80,  "ACC-2")  # -20%
+        _seed("CIK1", "2024-09-30", "CUSIP1", 800, 80, "ACC-2")  # -20%
         rows = query_holdings_delta("CIK1", "2024-06-30", "2024-09-30")
         assert rows[0]["change_type"] == "DECREASED"
 
@@ -291,7 +313,6 @@ class TestHoldingsDelta:
 
 
 class TestPortfolioTimeline:
-
     def test_returns_one_row_per_quarter(self):
         _seed("CIK1", "2024-03-31", "CUSIP1", 1000, 100, "ACC-1")
         _seed("CIK1", "2024-06-30", "CUSIP1", 1100, 110, "ACC-2")
@@ -301,8 +322,8 @@ class TestPortfolioTimeline:
 
     def test_ordered_oldest_first(self):
         _seed("CIK1", "2024-09-30", "CUSIP1", 1000, 100, "ACC-3")
-        _seed("CIK1", "2024-03-31", "CUSIP1", 900,  90,  "ACC-1")
-        _seed("CIK1", "2024-06-30", "CUSIP1", 950,  95,  "ACC-2")
+        _seed("CIK1", "2024-03-31", "CUSIP1", 900, 90, "ACC-1")
+        _seed("CIK1", "2024-06-30", "CUSIP1", 950, 95, "ACC-2")
         rows = query_portfolio_timeline("CIK1")
         dates = [r["as_of_date"] for r in rows]
         assert dates == sorted(dates)
@@ -312,10 +333,9 @@ class TestPortfolioTimeline:
 
 
 class TestSecurityHolders:
-
     def test_returns_holders_for_cusip(self):
         _seed("CIK1", "2024-09-30", "CUSIP1", 1000, 100, "ACC-1")
-        _seed("CIK2", "2024-09-30", "CUSIP1", 500,  50,  "ACC-2")
+        _seed("CIK2", "2024-09-30", "CUSIP1", 500, 50, "ACC-2")
         rows = query_security_holders("CUSIP1")
         assert len(rows) == 2
 
@@ -333,7 +353,7 @@ class TestSecurityHolders:
         assert rows[0]["shares_held"] == 1000.0
 
     def test_sorted_by_shares_descending(self):
-        _seed("CIK1", "2024-09-30", "CUSIP1", 500,  50,  "ACC-1")
+        _seed("CIK1", "2024-09-30", "CUSIP1", 500, 50, "ACC-1")
         _seed("CIK2", "2024-09-30", "CUSIP1", 2000, 200, "ACC-2")
         rows = query_security_holders("CUSIP1")
         assert rows[0]["shares_held"] > rows[1]["shares_held"]

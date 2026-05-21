@@ -4,6 +4,7 @@ Pipeline orchestration tests — all 5 phases end-to-end.
 Network calls are replaced with fixture data so these run offline.
 The DB is redirected to a tmp_path so nothing touches data/db.sqlite.
 """
+
 import json
 from unittest.mock import MagicMock
 
@@ -61,16 +62,24 @@ def isolated_env(monkeypatch, tmp_path):
 
 # ── Happy path ─────────────────────────────────────────────────────────────
 
-class TestPipelineHappyPath:
 
+class TestPipelineHappyPath:
     def test_runs_without_error(self, monkeypatch):
-        monkeypatch.setattr("src.pipeline.get_company_facts", lambda cik, save_sample=False: _EDGAR_RAW)
-        monkeypatch.setattr("src.pipeline.get_ticker_details", lambda ticker, save_sample=False: _POLYGON_RAW)
+        monkeypatch.setattr(
+            "src.pipeline.get_company_facts", lambda cik, save_sample=False: _EDGAR_RAW
+        )
+        monkeypatch.setattr(
+            "src.pipeline.get_ticker_details", lambda ticker, save_sample=False: _POLYGON_RAW
+        )
         pipeline_mod.run([SAMPLE_CIK], save_samples=False)
 
     def test_saves_raw_responses_for_both_sources(self, monkeypatch):
-        monkeypatch.setattr("src.pipeline.get_company_facts", lambda cik, save_sample=False: _EDGAR_RAW)
-        monkeypatch.setattr("src.pipeline.get_ticker_details", lambda ticker, save_sample=False: _POLYGON_RAW)
+        monkeypatch.setattr(
+            "src.pipeline.get_company_facts", lambda cik, save_sample=False: _EDGAR_RAW
+        )
+        monkeypatch.setattr(
+            "src.pipeline.get_ticker_details", lambda ticker, save_sample=False: _POLYGON_RAW
+        )
         pipeline_mod.run([SAMPLE_CIK], save_samples=False)
 
         with db._conn() as con:
@@ -80,8 +89,12 @@ class TestPipelineHappyPath:
         assert "polygon" in sources
 
     def test_saves_canonical_facts(self, monkeypatch):
-        monkeypatch.setattr("src.pipeline.get_company_facts", lambda cik, save_sample=False: _EDGAR_RAW)
-        monkeypatch.setattr("src.pipeline.get_ticker_details", lambda ticker, save_sample=False: _POLYGON_RAW)
+        monkeypatch.setattr(
+            "src.pipeline.get_company_facts", lambda cik, save_sample=False: _EDGAR_RAW
+        )
+        monkeypatch.setattr(
+            "src.pipeline.get_ticker_details", lambda ticker, save_sample=False: _POLYGON_RAW
+        )
         pipeline_mod.run([SAMPLE_CIK], save_samples=False)
 
         with db._conn() as con:
@@ -89,8 +102,12 @@ class TestPipelineHappyPath:
         assert count >= 1
 
     def test_reconciliation_is_validated(self, monkeypatch):
-        monkeypatch.setattr("src.pipeline.get_company_facts", lambda cik, save_sample=False: _EDGAR_RAW)
-        monkeypatch.setattr("src.pipeline.get_ticker_details", lambda ticker, save_sample=False: _POLYGON_RAW)
+        monkeypatch.setattr(
+            "src.pipeline.get_company_facts", lambda cik, save_sample=False: _EDGAR_RAW
+        )
+        monkeypatch.setattr(
+            "src.pipeline.get_ticker_details", lambda ticker, save_sample=False: _POLYGON_RAW
+        )
         pipeline_mod.run([SAMPLE_CIK], save_samples=False)
 
         with db._conn() as con:
@@ -98,8 +115,12 @@ class TestPipelineHappyPath:
         assert row["overall_status"] == "VALIDATED"
 
     def test_creates_drift_baseline_on_first_run(self, monkeypatch, tmp_path):
-        monkeypatch.setattr("src.pipeline.get_company_facts", lambda cik, save_sample=False: _EDGAR_RAW)
-        monkeypatch.setattr("src.pipeline.get_ticker_details", lambda ticker, save_sample=False: _POLYGON_RAW)
+        monkeypatch.setattr(
+            "src.pipeline.get_company_facts", lambda cik, save_sample=False: _EDGAR_RAW
+        )
+        monkeypatch.setattr(
+            "src.pipeline.get_ticker_details", lambda ticker, save_sample=False: _POLYGON_RAW
+        )
         pipeline_mod.run([SAMPLE_CIK], save_samples=False)
 
         baseline = tmp_path / "data" / "baselines" / "edgar_facts.json"
@@ -110,8 +131,8 @@ class TestPipelineHappyPath:
 
 # ── EDGAR failure ──────────────────────────────────────────────────────────
 
-class TestPipelineEdgarFailure:
 
+class TestPipelineEdgarFailure:
     def test_edgar_404_skips_cik_without_crashing(self, monkeypatch):
         """A failed EDGAR fetch should log and skip — not abort the whole run."""
         monkeypatch.setattr(
@@ -142,22 +163,28 @@ class TestPipelineEdgarFailure:
             return second_edgar
 
         monkeypatch.setattr("src.pipeline.get_company_facts", edgar_sometimes_fails)
-        monkeypatch.setattr("src.pipeline.get_ticker_details", lambda ticker, save_sample=False: second_polygon)
+        monkeypatch.setattr(
+            "src.pipeline.get_ticker_details", lambda ticker, save_sample=False: second_polygon
+        )
 
         pipeline_mod.run([SAMPLE_CIK, second_cik], save_samples=False)
 
         with db._conn() as con:
-            rows = con.execute("SELECT entity_id FROM raw_responses WHERE source='edgar'").fetchall()
+            rows = con.execute(
+                "SELECT entity_id FROM raw_responses WHERE source='edgar'"
+            ).fetchall()
         assert any(r["entity_id"] == second_cik for r in rows)
 
 
 # ── Missing Polygon data ───────────────────────────────────────────────────
 
-class TestPipelineNoPolygon:
 
+class TestPipelineNoPolygon:
     def test_polygon_failure_still_saves_edgar_canonical(self, monkeypatch):
         """Polygon error must not prevent EDGAR canonical from being saved."""
-        monkeypatch.setattr("src.pipeline.get_company_facts", lambda cik, save_sample=False: _EDGAR_RAW)
+        monkeypatch.setattr(
+            "src.pipeline.get_company_facts", lambda cik, save_sample=False: _EDGAR_RAW
+        )
         monkeypatch.setattr(
             "src.pipeline.get_ticker_details",
             MagicMock(side_effect=PermissionError("403 auth error")),
@@ -171,7 +198,9 @@ class TestPipelineNoPolygon:
         assert len(rows) == 1
 
     def test_no_reconciliation_without_polygon(self, monkeypatch):
-        monkeypatch.setattr("src.pipeline.get_company_facts", lambda cik, save_sample=False: _EDGAR_RAW)
+        monkeypatch.setattr(
+            "src.pipeline.get_company_facts", lambda cik, save_sample=False: _EDGAR_RAW
+        )
         monkeypatch.setattr(
             "src.pipeline.get_ticker_details",
             MagicMock(side_effect=PermissionError("403 auth error")),
@@ -185,7 +214,9 @@ class TestPipelineNoPolygon:
     def test_no_ticker_in_edgar_skips_polygon(self, monkeypatch):
         """If EDGAR returns no tickers and name search returns None, Polygon is skipped."""
         no_ticker_raw = {**_EDGAR_RAW, "tickers": []}
-        monkeypatch.setattr("src.pipeline.get_company_facts", lambda cik, save_sample=False: no_ticker_raw)
+        monkeypatch.setattr(
+            "src.pipeline.get_company_facts", lambda cik, save_sample=False: no_ticker_raw
+        )
         monkeypatch.setattr("src.pipeline.search_ticker_by_name", lambda name: None)
         monkeypatch.setattr("src.pipeline.get_ticker_details", MagicMock())
 

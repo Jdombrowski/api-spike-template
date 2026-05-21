@@ -15,6 +15,7 @@ Run with:
 Or investigate a specific entity:
     python -m src.pipeline --cik 0001067983   # Berkshire
 """
+
 import argparse
 import logging
 
@@ -49,7 +50,7 @@ logging.basicConfig(
     format="%(asctime)s  %(levelname)-8s  %(name)s  %(message)s",
     datefmt="%H:%M:%S",
 )
-log     = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 console = Console()
 
 
@@ -57,25 +58,23 @@ def run(ciks: list[str], save_samples: bool = True):
     config.validate()
     init_db()
 
-    edgar_mapper   = EdgarCompanyFactsMapper()
+    edgar_mapper = EdgarCompanyFactsMapper()
     polygon_mapper = PolygonTickerMapper()
     edgar_profiler = Profiler("edgar_company_facts", max_depth=1)
 
     baseline_path = config.PROJECT_ROOT / "data" / "baselines" / "edgar_facts.json"
-    drift_detector = (
-        SchemaDriftDetector.load(baseline_path)
-        if baseline_path.exists()
-        else None
+    drift_detector = SchemaDriftDetector.load(baseline_path) if baseline_path.exists() else None
+
+    console.print(
+        Panel(
+            f"[bold]API Investigation Spike[/bold]\n"
+            f"Targets: {len(ciks)} entities | Samples: {save_samples}\n"
+            f"Drift baseline: {'loaded' if drift_detector else 'not yet created'}",
+            title="Atomic Insights · Ambiguous API Spike",
+        )
     )
 
-    console.print(Panel(
-        f"[bold]API Investigation Spike[/bold]\n"
-        f"Targets: {len(ciks)} entities | Samples: {save_samples}\n"
-        f"Drift baseline: {'loaded' if drift_detector else 'not yet created'}",
-        title="Atomic Insights · Ambiguous API Spike"
-    ))
-
-    all_edgar_raw  = []
+    all_edgar_raw = []
     reconciliations = []
 
     # ── Phase 1: Ingest ────────────────────────────────────────────────────
@@ -97,19 +96,23 @@ def run(ciks: list[str], save_samples: bool = True):
         # Polygon: ticker details (cross-reference source)
         # Prefer tickers from the already-fetched EDGAR facts; fall back to Polygon name search
         edgar_tickers = edgar_raw.get("tickers", [])
-        ticker = edgar_tickers[0] if edgar_tickers else search_ticker_by_name(edgar_raw.get("name", ""))
+        ticker = (
+            edgar_tickers[0] if edgar_tickers else search_ticker_by_name(edgar_raw.get("name", ""))
+        )
         polygon_raw_id = None
-        polygon_raw    = None
+        polygon_raw = None
 
         if ticker:
             try:
-                polygon_raw     = get_ticker_details(ticker, save_sample=save_samples)
-                polygon_raw_id  = save_raw("polygon", "ticker_details", ticker, polygon_raw)
+                polygon_raw = get_ticker_details(ticker, save_sample=save_samples)
+                polygon_raw_id = save_raw("polygon", "ticker_details", ticker, polygon_raw)
                 console.print(f"  [green]✓[/green] Polygon ticker {ticker}")
             except Exception as e:
                 console.print(f"  [yellow]⚠[/yellow] Polygon failed for {ticker}: {e}")
         else:
-            console.print(f"  [yellow]⚠[/yellow] Could not resolve ticker for CIK {cik} — skipping Polygon")
+            console.print(
+                f"  [yellow]⚠[/yellow] Could not resolve ticker for CIK {cik} — skipping Polygon"
+            )
 
         reconciliations.append((cik, edgar_raw, edgar_raw_id, polygon_raw, polygon_raw_id))
 
@@ -141,13 +144,15 @@ def run(ciks: list[str], save_samples: bool = True):
     total_drift_issues = 0
     for cik, edgar_raw, edgar_raw_id in all_edgar_raw:
         top_level = {k: v for k, v in edgar_raw.items() if k != "facts"}
-        issues    = drift_detector.check(top_level)
+        issues = drift_detector.check(top_level)
         if issues:
             save_drift_events("edgar", issues, edgar_raw_id)
             total_drift_issues += len(issues)
             for issue in issues:
                 color = "red" if issue.severity == "ERROR" else "yellow"
-                console.print(f"  [{color}]{issue.severity}[/{color}] {issue.field}: {issue.description}")
+                console.print(
+                    f"  [{color}]{issue.severity}[/{color}] {issue.field}: {issue.description}"
+                )
         else:
             console.print(f"  [green]✓[/green] CIK {cik} — no drift detected")
 
@@ -156,7 +161,7 @@ def run(ciks: list[str], save_samples: bool = True):
     # ── Phase 4: Canonical mapping ─────────────────────────────────────────
     console.rule("[bold]Phase 4: Canonical Mapping")
 
-    edgar_canonicals  = {}
+    edgar_canonicals = {}
     polygon_canonicals = {}
 
     for cik, edgar_raw, edgar_raw_id in all_edgar_raw:
@@ -189,9 +194,7 @@ def run(ciks: list[str], save_samples: bool = True):
         save_reconciliation(cik, result, edgar_raw_id, polygon_raw_id)
 
         status_color = "green" if result["overall"] == "VALIDATED" else "red"
-        console.print(
-            f"  [{status_color}]{result['overall']}[/{status_color}]  CIK {cik}"
-        )
+        console.print(f"  [{status_color}]{result['overall']}[/{status_color}]  CIK {cik}")
         for check_name, check in result["checks"].items():
             icon = "✓" if check["status"] in ("MATCH", "SIMILAR") else "✗"
             color = "green" if icon == "✓" else "red"
@@ -214,9 +217,7 @@ def run(ciks: list[str], save_samples: bool = True):
         f"\n[dim]Raw responses, canonical records, drift events, and reconciliation "
         f"results saved to {config.DB_PATH}[/dim]"
     )
-    console.print(
-        "[dim]Profile report → docs/edgar_profile.md[/dim]\n"
-    )
+    console.print("[dim]Profile report → docs/edgar_profile.md[/dim]\n")
 
 
 if __name__ == "__main__":

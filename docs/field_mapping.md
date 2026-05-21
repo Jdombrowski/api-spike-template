@@ -64,11 +64,11 @@ synonyms, and flag records where none of the known synonyms appear.
 
 **Finding:** The `units` key structure is the most important undocumented behavior.
 
-```
+```json
 {
   "units": {
     "USD": [ { "val": 500000000, "end": "2023-09-30", "form": "10-K", ... } ],
-    "shares": [ ... ]   # only present for share-count concepts
+    "shares": [ ... ]
   }
 }
 ```
@@ -91,16 +91,16 @@ Cross-reference validates: EDGAR `Assets` for Berkshire ≈ market data. Confirm
 13F-HR filings include an InfoTable XML document (separate from the cover page) containing
 one `<infoTable>` element per position held.
 
-| XML tag                     | canonical name           | status        | notes                                                                                                     |
-| --------------------------- | ------------------------ | ------------- | --------------------------------------------------------------------------------------------------------- |
-| `<nameOfIssuer>`            | `entity_name`            | ✅ CONFIRMED  | Legal name of the issuer as reported by the filer. Format varies — not normalized.                        |
-| `<cusip>`                   | `cusip`                  | ✅ CONFIRMED  | 9-character CUSIP identifier. Most reliable cross-reference key for equities.                             |
-| `<value>`                   | `market_value_usd`       | ⚠️ ASSUMPTION | See units section below — may be thousands or full USD depending on filing era.                           |
-| `<sshPrnamtType>`           | `value_unit` (inferred)  | ✅ CONFIRMED  | `"SH"` = share count; `"PRN"` = principal amount (bonds/notes). Critical for cross-validation validity.   |
-| `<sshPrnamt>`               | `shares_held`            | ✅ CONFIRMED  | Share count when `sshPrnamtType = "SH"`. Principal amount when `"PRN"` — not comparable to price × shares.|
-| `<titleOfClass>`            | `title_of_class`         | ✅ CONFIRMED  | Share class description (e.g. `"COM"`, `"CL A"`, `"PFD"`). Useful for identifying non-common instruments.|
-| `<investmentDiscretion>`    | `investment_discretion`  | ✅ CONFIRMED  | `"SOLE"`, `"SHARED"`, or `"OTHER"`. Indicates reporting manager's control over the position.              |
-| `<votingAuthority>`         | _(intentionally unmapped)_| 🔲 UNMAPPED  | Sole/shared/none vote counts. Not used in current pipeline — kept for completeness.                       |
+| XML tag                     | canonical name             | status        | notes                                                                                                     |
+| --------------------------- | -------------------------- | ------------- | --------------------------------------------------------------------------------------------------------- |
+| `<nameOfIssuer>`            | `entity_name`              | ✅ CONFIRMED  | Legal name of the issuer as reported by the filer. Format varies — not normalized.                        |
+| `<cusip>`                   | `cusip`                    | ✅ CONFIRMED  | 9-character CUSIP identifier. Most reliable cross-reference key for equities.                             |
+| `<value>`                   | `market_value_usd`         | ⚠️ ASSUMPTION | See units section below — may be thousands or full USD depending on filing era.                           |
+| `<sshPrnamtType>`           | `value_unit` (inferred)    | ✅ CONFIRMED  | `"SH"` = share count; `"PRN"` = principal amount (bonds/notes). Critical for cross-validation validity.   |
+| `<sshPrnamt>`               | `shares_held`              | ✅ CONFIRMED  | Share count when `sshPrnamtType = "SH"`. Principal amount when `"PRN"` — not comparable to price × shares.|
+| `<titleOfClass>`            | `title_of_class`           | ✅ CONFIRMED  | Share class description (e.g. `"COM"`, `"CL A"`, `"PFD"`). Useful for identifying non-common instruments. |
+| `<investmentDiscretion>`    | `investment_discretion`    | ✅ CONFIRMED  | `"SOLE"`, `"SHARED"`, or `"OTHER"`. Indicates reporting manager's control over the position.              |
+| `<votingAuthority>`         | _(intentionally unmapped)_ | 🔲 UNMAPPED  | Sole/shared/none vote counts. Not used in current pipeline — kept for completeness.                       |
 
 ---
 
@@ -114,11 +114,11 @@ some filers and time periods. The `<value>` field carries no explicit unit tag.
 
 **Detection heuristic** (implemented in `holdings_mapper.py`):
 
-```
+```python
 implied_price = value / shares_held
 
-if implied_price >= $5:   → value is in full USD (USD)
-else:                     → value is in thousands (USD_THOUSANDS)
+if implied_price >= 5:   # → value is in full USD (USD)
+else:                    # → value is in thousands (USD_THOUSANDS)
 ```
 
 Rationale: for any institutional equity holding, `value_usd / shares` should equal
@@ -147,8 +147,8 @@ reported holding value.
 ```
 ratio = (shares_held × closing_price_at_quarter_end) / reported_value_usd
 
-CLOSE     → ratio within 15% of 1.0   (rounding + price-date drift acceptable)
-DIVERGENT → ratio outside 15%         (investigate: wrong price date, non-equity, etc.)
+CLOSE     → ratio within 15% of 1.0  (rounding + price-date drift acceptable)
+DIVERGENT → ratio outside 15%        (investigate: wrong price date, non-equity, etc.)
 NO_PRICE  → ticker unresolved or Polygon returned no bar for that date
 ```
 
@@ -238,3 +238,9 @@ per-concept validation before use in production financial reporting.
    frequently fall on weekends. A pipeline that fetches prices for the exact
    quarter-end date will silently produce NO_PRICE for entire quarters.
    Always use a lookback window and take the nearest preceding close.
+
+7. **Separate the formatter from the linter in CI.** `ruff format` owns line
+   length by reformatting code; `ruff check` owns logic errors. Running them
+   independently in the right order (`format` → `check --fix`) avoids false
+   E501 failures on string literals that the formatter cannot split. Suppress
+   E501 in the lint rule set when `ruff format` is the canonical formatter.

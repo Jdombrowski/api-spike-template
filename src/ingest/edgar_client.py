@@ -13,6 +13,7 @@ EDGAR is a good stand-in for a custodian API because:
   - No changelog — endpoints change with SEC regulatory updates
   - Rate limits enforced via User-Agent header (not API key)
 """
+
 import logging
 
 from src import config
@@ -27,10 +28,10 @@ _HEADERS = {"User-Agent": config.EDGAR_USER_AGENT, "Accept": "application/json"}
 # CIK numbers are stable identifiers in EDGAR (analogous to account_id in custodian APIs)
 SAMPLE_FILERS = {
     "berkshire_hathaway": "0001067983",
-    "blackrock":          "0001364742",
-    "vanguard":           "0000102909",
-    "fidelity":           "0000315066",
-    "ares_management":    "0001555280",  # mid-size RIA — closer to Atomic's clients
+    "blackrock": "0001364742",
+    "vanguard": "0000102909",
+    "fidelity": "0000315066",
+    "ares_management": "0001555280",  # mid-size RIA — closer to Atomic's clients
 }
 
 
@@ -45,8 +46,9 @@ def get_company_facts(cik: str, save_sample: bool = False) -> dict:
     cik_padded = cik.zfill(10)
     url = f"{config.EDGAR_BASE}/api/xbrl/companyfacts/CIK{cik_padded}.json"
     log.info("[edgar] fetching company facts for CIK %s", cik)
-    return get(url, source="edgar", headers=_HEADERS,
-               save_sample=save_sample, sample_name=f"facts_{cik}")
+    return get(
+        url, source="edgar", headers=_HEADERS, save_sample=save_sample, sample_name=f"facts_{cik}"
+    )
 
 
 def get_company_concept(cik: str, concept: str, taxonomy: str = "us-gaap") -> dict:
@@ -71,8 +73,13 @@ def get_submissions(cik: str, save_sample: bool = False) -> dict:
     cik_padded = cik.zfill(10)
     url = f"{config.EDGAR_BASE}/submissions/CIK{cik_padded}.json"
     log.info("[edgar] fetching submissions for CIK %s", cik)
-    return get(url, source="edgar", headers=_HEADERS,
-               save_sample=save_sample, sample_name=f"submissions_{cik}")
+    return get(
+        url,
+        source="edgar",
+        headers=_HEADERS,
+        save_sample=save_sample,
+        sample_name=f"submissions_{cik}",
+    )
 
 
 def get_13f_filings(cik: str) -> list[dict]:
@@ -83,21 +90,23 @@ def get_13f_filings(cik: str) -> list[dict]:
     submissions = get_submissions(cik)
     filings = submissions.get("filings", {}).get("recent", {})
 
-    forms       = filings.get("form", [])
-    dates       = filings.get("filingDate", [])
-    accessions  = filings.get("accessionNumber", [])
+    forms = filings.get("form", [])
+    dates = filings.get("filingDate", [])
+    accessions = filings.get("accessionNumber", [])
     descriptions = filings.get("primaryDocument", [])
 
     results = []
     for form, date, acc, doc in zip(forms, dates, accessions, descriptions):
         if form in ("13F-HR", "13F-HR/A"):
-            results.append({
-                "form":             form,
-                "filing_date":      date,
-                "accession_number": acc,
-                "primary_document": doc,
-                "cik":              cik,
-            })
+            results.append(
+                {
+                    "form": form,
+                    "filing_date": date,
+                    "accession_number": acc,
+                    "primary_document": doc,
+                    "cik": cik,
+                }
+            )
 
     log.info("[edgar] found %d 13F filings for CIK %s", len(results), cik)
     return results
@@ -120,8 +129,8 @@ def get_13f_document(cik: str, accession_number: str) -> str:
 
     Returns raw XML — pass to ThirteenFMapper.parse().
     """
-    index     = get_filing_index(cik, accession_number)
-    filename  = _find_info_table_filename(index, accession_number)
+    index = get_filing_index(cik, accession_number)
+    filename = _find_info_table_filename(index, accession_number)
     acc_clean = accession_number.replace("-", "")
     url = f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{acc_clean}/{filename}"
     log.info("[edgar] fetching InfoTable XML: %s", filename)

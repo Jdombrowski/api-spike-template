@@ -1,4 +1,5 @@
 """Configuration for the API spike investigation."""
+
 import os
 from pathlib import Path
 
@@ -16,7 +17,7 @@ SAMPLES_DIR.mkdir(parents=True, exist_ok=True)
 EDGAR_BASE = "https://data.sec.gov"
 EDGAR_USER_AGENT = os.getenv(
     "EDGAR_USER_AGENT",
-    "Mozilla/5.0 (API Spike Investigation; +https://github.com/yourusername/repo)"
+    "Mozilla/5.0 (API Spike Investigation; +https://github.com/yourusername/repo)",
 )
 
 # ── Polygon.io API ─────────────────────────────────────────────────────────
@@ -42,6 +43,4 @@ POLYGON_RATE_LIMIT_RPM = int(os.getenv("POLYGON_RATE_LIMIT_RPM", "5"))
 def validate():
     """Validate required configuration at startup."""
     if not POLYGON_API_KEY:
-        raise RuntimeError(
-            "POLYGON_API_KEY not set. Add to .env or set environment variable."
-        )
+        raise RuntimeError("POLYGON_API_KEY not set. Add to .env or set environment variable.")

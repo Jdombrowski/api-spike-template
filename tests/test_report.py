@@ -3,6 +3,7 @@ Tests for the report and export layer.
 
 Uses the same isolated_env pattern as test_pipeline.py — tmp DB, no real files.
 """
+
 import csv
 import json
 
@@ -23,8 +24,14 @@ def isolated_env(monkeypatch, tmp_path):
 
 # ── Seed helpers ───────────────────────────────────────────────────────────
 
-def _seed_entity(cik="0001067983", name="BERKSHIRE HATHAWAY INC", entity_type="operating",
-                 ticker="BRK-A", sic_code="6331"):
+
+def _seed_entity(
+    cik="0001067983",
+    name="BERKSHIRE HATHAWAY INC",
+    entity_type="operating",
+    ticker="BRK-A",
+    sic_code="6331",
+):
     """Insert a minimal set of rows that a real pipeline run would produce."""
     mapped = {
         "_source": "edgar_companyfacts",
@@ -41,41 +48,60 @@ def _seed_entity(cik="0001067983", name="BERKSHIRE HATHAWAY INC", entity_type="o
     with _conn() as con:
         raw_id = con.execute(
             "INSERT INTO raw_responses (source, endpoint, entity_id, response_json) VALUES (?,?,?,?)",
-            ("edgar", "companyfacts", cik, json.dumps({"name": name}))
+            ("edgar", "companyfacts", cik, json.dumps({"name": name})),
         ).lastrowid
         con.execute(
             "INSERT INTO canonical_facts "
             "(source, entity_name, cik, ticker, sic_code, entity_type, mapped_json, raw_response_id) "
             "VALUES (?,?,?,?,?,?,?,?)",
-            ("edgar_companyfacts", name, cik, ticker, sic_code, entity_type, json.dumps(mapped), raw_id)
+            (
+                "edgar_companyfacts",
+                name,
+                cik,
+                ticker,
+                sic_code,
+                entity_type,
+                json.dumps(mapped),
+                raw_id,
+            ),
         )
         return raw_id
 
 
 def _seed_reconciliation(cik="0001067983", status="VALIDATED"):
     checks = {
-        "cik_match":  {"edgar": cik.lstrip("0"), "polygon": cik.lstrip("0"), "status": "MATCH",   "note": ""},
-        "name_match": {"edgar": "BERKSHIRE",      "polygon": "BERKSHIRE",      "status": "SIMILAR", "note": ""},
+        "cik_match": {
+            "edgar": cik.lstrip("0"),
+            "polygon": cik.lstrip("0"),
+            "status": "MATCH",
+            "note": "",
+        },
+        "name_match": {
+            "edgar": "BERKSHIRE",
+            "polygon": "BERKSHIRE",
+            "status": "SIMILAR",
+            "note": "",
+        },
     }
     with _conn() as con:
         con.execute(
             "INSERT INTO reconciliation (entity_id, overall_status, checks_json) VALUES (?,?,?)",
-            (cik, status, json.dumps(checks))
+            (cik, status, json.dumps(checks)),
         )
 
 
-def _seed_drift(raw_id: int, severity="WARNING", field="ein", description="unexpected null"):
+def _seed_drift(raw_id: int | None, severity="WARNING", field="ein", description="unexpected null"):
     with _conn() as con:
         con.execute(
             "INSERT INTO drift_events (source, severity, field, description, raw_response_id) VALUES (?,?,?,?,?)",
-            ("edgar", severity, field, description, raw_id)
+            ("edgar", severity, field, description, raw_id),
         )
 
 
 # ── query_ingestion_summary ────────────────────────────────────────────────
 
-class TestQueryIngestionSummary:
 
+class TestQueryIngestionSummary:
     def test_empty_db_returns_zero_entities(self):
         s = report_mod.query_ingestion_summary()
         assert s["entity_count"] == 0
@@ -91,8 +117,8 @@ class TestQueryIngestionSummary:
 
 # ── query_entities ─────────────────────────────────────────────────────────
 
-class TestQueryEntities:
 
+class TestQueryEntities:
     def test_returns_empty_list_with_no_data(self):
         assert report_mod.query_entities() == []
 
@@ -117,8 +143,8 @@ class TestQueryEntities:
 
 # ── query_reconciliation_detail ────────────────────────────────────────────
 
-class TestQueryReconciliationDetail:
 
+class TestQueryReconciliationDetail:
     def test_empty_when_no_reconciliation(self):
         assert report_mod.query_reconciliation_detail() == []
 
@@ -141,15 +167,15 @@ class TestQueryReconciliationDetail:
 
 # ── query_drift_by_entity ──────────────────────────────────────────────────
 
-class TestQueryDriftByEntity:
 
+class TestQueryDriftByEntity:
     def test_empty_when_no_drift(self):
         assert report_mod.query_drift_by_entity() == {}
 
     def test_groups_by_cik(self):
         raw_id = _seed_entity()
         _seed_drift(raw_id, severity="WARNING", field="ein")
-        _seed_drift(raw_id, severity="ERROR",   field="cik")
+        _seed_drift(raw_id, severity="ERROR", field="cik")
 
         drift = report_mod.query_drift_by_entity()
         assert "0001067983" in drift
@@ -169,8 +195,8 @@ class TestQueryDriftByEntity:
 
 # ── query_open_assumptions ─────────────────────────────────────────────────
 
-class TestQueryOpenAssumptions:
 
+class TestQueryOpenAssumptions:
     def test_empty_when_no_data(self):
         assert report_mod.query_open_assumptions() == []
 
@@ -190,8 +216,8 @@ class TestQueryOpenAssumptions:
 
 # ── report() (smoke test) ──────────────────────────────────────────────────
 
-class TestReport:
 
+class TestReport:
     def test_no_crash_on_empty_db(self):
         report_mod.report()
 
@@ -204,8 +230,8 @@ class TestReport:
 
 # ── export() ──────────────────────────────────────────────────────────────
 
-class TestExport:
 
+class TestExport:
     def test_creates_three_csv_files(self, tmp_path):
         _seed_entity()
         _seed_reconciliation()
@@ -230,7 +256,7 @@ class TestExport:
         report_mod.export(out_dir=out)
         recon_csv = next(out.glob("reconciliation__*.csv"))
         rows = list(csv.DictReader(recon_csv.open()))
-        assert len(rows) == 2        # two checks: cik_match + name_match
+        assert len(rows) == 2  # two checks: cik_match + name_match
         assert all("check" in r for r in rows)
 
     def test_export_with_no_data_writes_empty_csvs(self, tmp_path):

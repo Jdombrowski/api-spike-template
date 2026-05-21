@@ -12,6 +12,7 @@ Feed it a collection of real responses and it tells you:
 Design principle: generate a written investigation report, not just numbers.
 The report is what you'd share with a teammate or paste into field_mapping.md.
 """
+
 import logging
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -28,13 +29,13 @@ console = Console()
 
 @dataclass
 class FieldStats:
-    name:     str
-    present:  int = 0
-    null:     int = 0
-    absent:   int = 0
-    types:    dict = field(default_factory=lambda: defaultdict(int))
-    samples:  list = field(default_factory=list)
-    total:    int  = 0
+    name: str
+    present: int = 0
+    null: int = 0
+    absent: int = 0
+    types: dict = field(default_factory=lambda: defaultdict(int))
+    samples: list = field(default_factory=list)
+    total: int = 0
 
     @property
     def null_pct(self) -> float:
@@ -58,7 +59,9 @@ class FieldStats:
         if self.absent_pct > 0 and self.null_pct > 0:
             return f"both absent ({self.absent_pct:.0f}%) and null ({self.null_pct:.0f}%) — likely two different meanings"
         if self.absent_pct > 20:
-            return f"absent in {self.absent_pct:.0f}% of records — may be conditional on another field"
+            return (
+                f"absent in {self.absent_pct:.0f}% of records — may be conditional on another field"
+            )
         return None
 
 
@@ -80,7 +83,7 @@ def _flatten(obj: Any, prefix: str = "", depth: int = 0, max_depth: int = 2) -> 
 class Profiler:
     """
     Collect a sample of real API responses, then run .report() to understand them.
-    
+
     Usage:
         p = Profiler("edgar_company_facts")
         for record in raw_responses:
@@ -90,8 +93,8 @@ class Profiler:
     """
 
     def __init__(self, name: str, max_depth: int = 2, max_samples: int = 5):
-        self.name        = name
-        self.max_depth   = max_depth
+        self.name = name
+        self.max_depth = max_depth
         self.max_samples = max_samples
         self._stats: dict[str, FieldStats] = {}
         self._total = 0
@@ -142,19 +145,19 @@ class Profiler:
 
         # Full field table
         table = Table(box=box.SIMPLE, show_header=True, header_style="bold")
-        table.add_column("field",     style="cyan",  no_wrap=True)
-        table.add_column("present%",  justify="right")
-        table.add_column("null%",     justify="right")
-        table.add_column("absent%",   justify="right")
-        table.add_column("types",     style="dim")
-        table.add_column("samples",   style="dim",   max_width=50)
+        table.add_column("field", style="cyan", no_wrap=True)
+        table.add_column("present%", justify="right")
+        table.add_column("null%", justify="right")
+        table.add_column("absent%", justify="right")
+        table.add_column("types", style="dim")
+        table.add_column("samples", style="dim", max_width=50)
 
         for name, s in sorted(self._stats.items()):
-            pct      = f"{s.present / s.total * 100:.0f}%" if s.total else "—"
-            null_pct = f"{s.null_pct:.0f}%"    if s.null    else "—"
-            abs_pct  = f"{s.absent_pct:.0f}%"  if s.absent  else "—"
-            types    = ", ".join(f"{t}×{c}" for t, c in s.types.items() if c > 0)
-            samples  = str(s.samples[:3])
+            pct = f"{s.present / s.total * 100:.0f}%" if s.total else "—"
+            null_pct = f"{s.null_pct:.0f}%" if s.null else "—"
+            abs_pct = f"{s.absent_pct:.0f}%" if s.absent else "—"
+            types = ", ".join(f"{t}×{c}" for t, c in s.types.items() if c > 0)
+            samples = str(s.samples[:3])
             table.add_row(name, pct, null_pct, abs_pct, types, samples)
 
         console.print(table)
@@ -187,15 +190,22 @@ class Profiler:
             "|-------|----------|-------|---------|-------|---------|",
         ]
         for name, s in sorted(self._stats.items()):
-            pct     = f"{s.present / s.total * 100:.0f}%" if s.total else "—"
-            null_p  = f"{s.null_pct:.0f}%"   if s.null   else "—"
-            abs_p   = f"{s.absent_pct:.0f}%"  if s.absent else "—"
-            types   = ", ".join(f"`{t}`×{c}" for t, c in s.types.items() if c > 0)
+            pct = f"{s.present / s.total * 100:.0f}%" if s.total else "—"
+            null_p = f"{s.null_pct:.0f}%" if s.null else "—"
+            abs_p = f"{s.absent_pct:.0f}%" if s.absent else "—"
+            types = ", ".join(f"`{t}`×{c}" for t, c in s.types.items() if c > 0)
             samples = str(s.samples[:2]).replace("|", "\\|")
             lines.append(f"| `{name}` | {pct} | {null_p} | {abs_p} | {types} | {samples} |")
 
-        lines += ["", "---", "", "## Notes", "",
-                  "_Add your field interpretation notes here during investigation._", ""]
+        lines += [
+            "",
+            "---",
+            "",
+            "## Notes",
+            "",
+            "_Add your field interpretation notes here during investigation._",
+            "",
+        ]
 
         Path(path).write_text("\n".join(lines))
         log.info("profile report saved → %s", path)

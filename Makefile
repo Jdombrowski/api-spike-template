@@ -76,9 +76,9 @@ serve: ## Start the 13F holdings API on localhost:8000  (docs at /docs)
 
 # ── Code quality ───────────────────────────────────────────────────────────────
 .PHONY: format
-format: ## Auto-format and lint with ruff
-	$(VENV)/bin/ruff check --fix src/ tests/
+format: ## Auto-format with ruff (format then fix lint)
 	$(VENV)/bin/ruff format src/ tests/
+	$(VENV)/bin/ruff check --fix src/ tests/
 
 # ── Clean ──────────────────────────────────────────────────────────────────────
 .PHONY: clean

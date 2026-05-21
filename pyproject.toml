@@ -27,7 +27,8 @@ dev = [
 line-length = 100
 
 [tool.ruff.lint]
-select = ["E", "F", "I"]   # pycodestyle errors, pyflakes, isort
+select  = ["E", "F", "I", "UP"]   # pycodestyle, pyflakes, isort, pyupgrade
+ignore  = ["E501"]                 # line length enforced by ruff format, not the linter
 
 [tool.setuptools.packages.find]
 where = ["."]

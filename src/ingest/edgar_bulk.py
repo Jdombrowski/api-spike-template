@@ -19,6 +19,7 @@ Usage:
     make run-bulk                                    # default CIKs, 8 quarters
     make run-bulk QUARTERS=4 CIK="0001067983"
 """
+
 import argparse
 import csv
 import io
@@ -38,15 +39,16 @@ from src.ingest.http_client import get_bytes
 from src.schema.holdings_mapper import _infer_value_unit
 from src.storage.db import init_db, query_holdings_summary, save_holdings
 
-log     = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 console = Console()
 
-_DERA_BASE  = "https://www.sec.gov/files/dera/data/form-13f-data-sets"
-_HEADERS    = {"User-Agent": config.EDGAR_USER_AGENT}
-_CACHE_DIR  = config.PROJECT_ROOT / "data" / "dera"
+_DERA_BASE = "https://www.sec.gov/files/dera/data/form-13f-data-sets"
+_HEADERS = {"User-Agent": config.EDGAR_USER_AGENT}
+_CACHE_DIR = config.PROJECT_ROOT / "data" / "dera"
 
 
 # ── Public entry point ─────────────────────────────────────────────────────
+
 
 def run(ciks: list[str], quarters: int = 8) -> None:
     config.validate()
@@ -55,14 +57,16 @@ def run(ciks: list[str], quarters: int = 8) -> None:
 
     quarter_list = list(_iter_quarters(quarters))
 
-    console.print(Panel(
-        f"[bold]13F DERA Bulk Ingest[/bold]\n"
-        f"Targets: {len(ciks)} CIK(s)  |  {quarters} quarters  "
-        f"({quarter_list[-1][0]} Q{quarter_list[-1][1]} "
-        f"→ {quarter_list[0][0]} Q{quarter_list[0][1]})\n"
-        f"Cache: {_CACHE_DIR}",
-        title="Stage 4 · Bulk Holdings Pipeline",
-    ))
+    console.print(
+        Panel(
+            f"[bold]13F DERA Bulk Ingest[/bold]\n"
+            f"Targets: {len(ciks)} CIK(s)  |  {quarters} quarters  "
+            f"({quarter_list[-1][0]} Q{quarter_list[-1][1]} "
+            f"→ {quarter_list[0][0]} Q{quarter_list[0][1]})\n"
+            f"Cache: {_CACHE_DIR}",
+            title="Stage 4 · Bulk Holdings Pipeline",
+        )
+    )
 
     target_ciks = set(ciks)
     total_saved = 0
@@ -76,10 +80,10 @@ def run(ciks: list[str], quarters: int = 8) -> None:
     console.print(f"  Positions saved this run: [bold]{total_saved:,}[/bold]\n")
 
     table = Table(box=box.SIMPLE, show_header=True, header_style="bold")
-    table.add_column("CIK",            style="dim")
-    table.add_column("Quarters",       justify="right")
-    table.add_column("Positions",      justify="right")
-    table.add_column("Value (USD B)",  justify="right")
+    table.add_column("CIK", style="dim")
+    table.add_column("Quarters", justify="right")
+    table.add_column("Positions", justify="right")
+    table.add_column("Value (USD B)", justify="right")
     table.add_column("Latest quarter")
 
     for r in query_holdings_summary():
@@ -95,8 +99,9 @@ def run(ciks: list[str], quarters: int = 8) -> None:
 
 # ── Per-quarter ingest ─────────────────────────────────────────────────────
 
+
 def _ingest_quarter(year: int, quarter: int, target_ciks: set[str]) -> int:
-    label    = f"{year}q{quarter}"
+    label = f"{year}q{quarter}"
     cache_path = _CACHE_DIR / f"{label}_form13f.zip"
 
     if cache_path.exists():
@@ -133,6 +138,7 @@ def _ingest_quarter(year: int, quarter: int, target_ciks: set[str]) -> int:
 
 # ── Quarter range helper ───────────────────────────────────────────────────
 
+
 def _iter_quarters(n: int):
     """Yield the last N complete (year, quarter) pairs, most recent first."""
     today = date.today()
@@ -155,6 +161,7 @@ def _iter_quarters(n: int):
 
 # ── ZIP parsing ────────────────────────────────────────────────────────────
 
+
 def _parse_zip(zip_bytes: bytes, target_ciks: set[str]) -> list[dict]:
     """
     Parse a DERA quarterly ZIP into holding dicts filtered to target_ciks.
@@ -165,7 +172,7 @@ def _parse_zip(zip_bytes: bytes, target_ciks: set[str]) -> list[dict]:
     """
     with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
         submissions = _read_tsv(zf, _find_member(zf, "SUBMISSION"))
-        infotable   = _read_tsv(zf, _find_member(zf, "INFOTABLE"))
+        infotable = _read_tsv(zf, _find_member(zf, "INFOTABLE"))
 
     # Build accession → filing metadata index for target CIKs only
     sub_index: dict[str, dict] = {}
@@ -176,10 +183,10 @@ def _parse_zip(zip_bytes: bytes, target_ciks: set[str]) -> list[dict]:
             continue
         acc = _normalise_accession(row.get("ACCESSION_NUMBER", ""))
         sub_index[acc] = {
-            "cik":         cik_padded,
+            "cik": cik_padded,
             "filing_date": row.get("FILED") or row.get("FILING_DATE", ""),
-            "as_of_date":  row.get("PERIOD_OF_REPORT", ""),
-            "form_type":   row.get("FORM_TYPE", "13F-HR"),
+            "as_of_date": row.get("PERIOD_OF_REPORT", ""),
+            "form_type": row.get("FORM_TYPE", "13F-HR"),
         }
 
     if not sub_index:
@@ -187,55 +194,56 @@ def _parse_zip(zip_bytes: bytes, target_ciks: set[str]) -> list[dict]:
 
     rows: list[dict] = []
     for pos in infotable:
-        acc  = _normalise_accession(pos.get("ACCESSION_NUMBER", ""))
+        acc = _normalise_accession(pos.get("ACCESSION_NUMBER", ""))
         meta = sub_index.get(acc)
         if not meta:
             continue
 
         try:
             shares = float(pos.get("SSHPRNAMT") or 0) or None
-            value  = float(pos.get("VALUE")     or 0) or None
+            value = float(pos.get("VALUE") or 0) or None
         except (ValueError, TypeError):
             shares, value = None, None
 
         assumptions: list[str] = []
         value_unit = _infer_value_unit(
-            int(value)  if value  is not None else None,
+            int(value) if value is not None else None,
             int(shares) if shares is not None else None,
             assumptions,
         )
 
-        rows.append({
-            "cik":               meta["cik"],
-            "accession_number":  acc,
-            "form_type":         meta["form_type"],
-            "filing_date":       meta["filing_date"],
-            "as_of_date":        meta["as_of_date"],
-            "issuer_name":       (pos.get("NAMEOFISSUER") or "").strip(),
-            "cusip":             (pos.get("CUSIP") or "").strip() or None,
-            "ticker":            None,
-            "shares_held":       shares,
-            "value_reported":    value,
-            "value_unit":        value_unit,
-            "price_at_filing":   None,
-            "value_estimated":   None,
-            "validation_ratio":  None,
-            "validation_status": None,
-        })
+        rows.append(
+            {
+                "cik": meta["cik"],
+                "accession_number": acc,
+                "form_type": meta["form_type"],
+                "filing_date": meta["filing_date"],
+                "as_of_date": meta["as_of_date"],
+                "issuer_name": (pos.get("NAMEOFISSUER") or "").strip(),
+                "cusip": (pos.get("CUSIP") or "").strip() or None,
+                "ticker": None,
+                "shares_held": shares,
+                "value_reported": value,
+                "value_unit": value_unit,
+                "price_at_filing": None,
+                "value_estimated": None,
+                "validation_ratio": None,
+                "validation_status": None,
+            }
+        )
 
     return rows
 
 
 # ── TSV / ZIP helpers ──────────────────────────────────────────────────────
 
+
 def _find_member(zf: zipfile.ZipFile, keyword: str) -> str:
     """Return the ZIP member whose filename contains keyword (case-insensitive)."""
     for name in zf.namelist():
         if keyword.upper() in name.upper():
             return name
-    raise LookupError(
-        f"No member matching '{keyword}' found in ZIP. Members: {zf.namelist()}"
-    )
+    raise LookupError(f"No member matching '{keyword}' found in ZIP. Members: {zf.namelist()}")
 
 
 def _read_tsv(zf: zipfile.ZipFile, member: str) -> list[dict]:
@@ -243,8 +251,7 @@ def _read_tsv(zf: zipfile.ZipFile, member: str) -> list[dict]:
     with zf.open(member) as f:
         text = f.read().decode("utf-8", errors="replace")
     reader = csv.DictReader(io.StringIO(text), delimiter="\t", quoting=csv.QUOTE_NONE)
-    return [{k.strip().upper(): (v or "").strip() for k, v in row.items()}
-            for row in reader]
+    return [{k.strip().upper(): (v or "").strip() for k, v in row.items()} for row in reader]
 
 
 def _normalise_accession(raw: str) -> str:
@@ -269,9 +276,10 @@ if __name__ == "__main__":
         datefmt="%H:%M:%S",
     )
     parser = argparse.ArgumentParser(description="Ingest SEC DERA 13F bulk datasets")
-    parser.add_argument("--cik",      nargs="*", help="CIK(s) to filter (space-separated)")
-    parser.add_argument("--quarters", type=int,  default=8,
-                        help="Number of quarters to ingest (default: 8)")
+    parser.add_argument("--cik", nargs="*", help="CIK(s) to filter (space-separated)")
+    parser.add_argument(
+        "--quarters", type=int, default=8, help="Number of quarters to ingest (default: 8)"
+    )
     args = parser.parse_args()
 
     target_ciks = args.cik or list(SAMPLE_FILERS.values())[:3]

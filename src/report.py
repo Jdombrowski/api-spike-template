@@ -7,6 +7,7 @@ Investigation report and CSV export.
 Query functions are intentionally public — they're the kind of thing you'd
 call from a runbook, a Jupyter notebook, or a downstream dashboard.
 """
+
 import argparse
 import csv
 import json
@@ -28,6 +29,7 @@ console = Console()
 
 # ── Query helpers ──────────────────────────────────────────────────────────
 
+
 def query_ingestion_summary() -> dict:
     """High-level counts: how many entities, which sources, when last run."""
     with _conn() as con:
@@ -37,9 +39,7 @@ def query_ingestion_summary() -> dict:
         source_rows = con.execute(
             "SELECT source, COUNT(*) AS n FROM raw_responses GROUP BY source"
         ).fetchall()
-        last_run = con.execute(
-            "SELECT MAX(ingested_at) FROM raw_responses"
-        ).fetchone()[0]
+        last_run = con.execute("SELECT MAX(ingested_at) FROM raw_responses").fetchone()[0]
     return {
         "entity_count": entity_count,
         "sources": {r["source"]: r["n"] for r in source_rows},
@@ -129,23 +129,26 @@ def query_open_assumptions() -> list[dict]:
         for assumption in mapped.get("_mapper_assumptions", []):
             if assumption not in seen:
                 seen.add(assumption)
-                assumptions.append({
-                    "cik":         r["cik"],
-                    "entity_name": r["entity_name"],
-                    "assumption":  assumption,
-                })
+                assumptions.append(
+                    {
+                        "cik": r["cik"],
+                        "entity_name": r["entity_name"],
+                        "assumption": assumption,
+                    }
+                )
     return assumptions
 
 
 # ── Terminal report ────────────────────────────────────────────────────────
 
+
 def report() -> None:
     """Rich terminal summary of all investigation findings."""
-    init_db()   # ensure holdings table exists for DBs created before Stage 2
-    summary    = query_ingestion_summary()
-    entities   = query_entities()
-    recons     = query_reconciliation_detail()
-    drift      = query_drift_by_entity()
+    init_db()  # ensure holdings table exists for DBs created before Stage 2
+    summary = query_ingestion_summary()
+    entities = query_entities()
+    recons = query_reconciliation_detail()
+    drift = query_drift_by_entity()
     assumptions = query_open_assumptions()
 
     if not entities:
@@ -153,29 +156,31 @@ def report() -> None:
         return
 
     sources_str = "  ".join(f"{s}: {n} call(s)" for s, n in summary["sources"].items())
-    console.print(Panel(
-        f"[bold]Investigation Report[/bold]\n"
-        f"Entities: {summary['entity_count']}  |  {sources_str}\n"
-        f"Last ingested: {summary['last_run'] or 'unknown'}",
-        title="API Spike · Findings",
-    ))
+    console.print(
+        Panel(
+            f"[bold]Investigation Report[/bold]\n"
+            f"Entities: {summary['entity_count']}  |  {sources_str}\n"
+            f"Last ingested: {summary['last_run'] or 'unknown'}",
+            title="API Spike · Findings",
+        )
+    )
 
     # ── Entities + reconciliation status ───────────────────────────────────
     console.rule("[bold]Entities")
     _STATUS_COLOR = {"VALIDATED": "green", "NEEDS_REVIEW": "red"}
 
     table = Table(box=box.SIMPLE, show_header=True, header_style="bold")
-    table.add_column("CIK",    style="dim", no_wrap=True)
+    table.add_column("CIK", style="dim", no_wrap=True)
     table.add_column("Name")
-    table.add_column("Type",   style="dim")
+    table.add_column("Type", style="dim")
     table.add_column("Ticker", style="dim")
-    table.add_column("SIC",    style="dim")
+    table.add_column("SIC", style="dim")
     table.add_column("Cross-ref status")
 
     for e in entities:
         status = e.get("overall_status")
-        color  = _STATUS_COLOR.get(status or "", "dim")
-        label  = f"[{color}]{status}[/{color}]" if status else "[dim]no polygon data[/dim]"
+        color = _STATUS_COLOR.get(status or "", "dim")
+        label = f"[{color}]{status}[/{color}]" if status else "[dim]no polygon data[/dim]"
         table.add_row(
             e.get("cik") or "—",
             e.get("entity_name") or "—",
@@ -228,15 +233,15 @@ def report() -> None:
     if holdings_rows:
         console.rule("[bold]13F Holdings")
         table = Table(box=box.SIMPLE, show_header=True, header_style="bold")
-        table.add_column("CIK",           style="dim")
-        table.add_column("Positions",     justify="right")
-        table.add_column("Validated",     justify="right")
+        table.add_column("CIK", style="dim")
+        table.add_column("Positions", justify="right")
+        table.add_column("Validated", justify="right")
         table.add_column("Value (USD M)", justify="right")
         table.add_column("Latest filing")
 
         for r in holdings_rows:
             validated = r.get("validated_count") or 0
-            total     = r.get("position_count")  or 0
+            total = r.get("position_count") or 0
             table.add_row(
                 r["cik"],
                 str(total),
@@ -250,6 +255,7 @@ def report() -> None:
 
 
 # ── CSV export ─────────────────────────────────────────────────────────────
+
 
 def export(out_dir: Path | None = None) -> None:
     """Write canonical_facts, reconciliation, and drift_events as timestamped CSVs."""
@@ -271,7 +277,11 @@ def _export_canonical(out: Path, ts: str) -> None:
             FROM canonical_facts ORDER BY entity_name
         """).fetchall()
     path = out / f"canonical_facts__{ts}.csv"
-    _write_csv(path, rows, ["cik", "entity_name", "entity_type", "ticker", "sic_code", "source", "created_at"])
+    _write_csv(
+        path,
+        rows,
+        ["cik", "entity_name", "entity_type", "ticker", "sic_code", "source", "created_at"],
+    )
     console.print(f"  [green]✓[/green] {path.name}  ({len(rows)} rows)")
 
 
@@ -279,21 +289,36 @@ def _export_reconciliation(out: Path, ts: str) -> None:
     flat: list[dict] = []
     for rec in query_reconciliation_detail():
         base = {
-            "entity_id":     rec["entity_id"],
+            "entity_id": rec["entity_id"],
             "overall_status": rec["overall_status"],
             "reconciled_at": rec["reconciled_at"],
         }
         for check_name, check in rec["checks"].items():
-            flat.append({
-                **base,
-                "check":         check_name,
-                "status":        check["status"],
-                "edgar_value":   check.get("edgar"),
-                "polygon_value": check.get("polygon"),
-                "note":          check.get("note", ""),
-            })
+            flat.append(
+                {
+                    **base,
+                    "check": check_name,
+                    "status": check["status"],
+                    "edgar_value": check.get("edgar"),
+                    "polygon_value": check.get("polygon"),
+                    "note": check.get("note", ""),
+                }
+            )
     path = out / f"reconciliation__{ts}.csv"
-    _write_csv(path, flat, ["entity_id", "overall_status", "check", "status", "edgar_value", "polygon_value", "note", "reconciled_at"])
+    _write_csv(
+        path,
+        flat,
+        [
+            "entity_id",
+            "overall_status",
+            "check",
+            "status",
+            "edgar_value",
+            "polygon_value",
+            "note",
+            "reconciled_at",
+        ],
+    )
     console.print(f"  [green]✓[/green] {path.name}  ({len(flat)} rows)")
 
 
@@ -323,7 +348,8 @@ def _write_csv(path: Path, rows: list, fieldnames: list[str]) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Investigation report and export")
     parser.add_argument(
-        "--export", action="store_true",
+        "--export",
+        action="store_true",
         help="Write findings to CSV instead of printing terminal report",
     )
     args = parser.parse_args()

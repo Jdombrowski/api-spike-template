@@ -6,6 +6,7 @@ Auto-generated OpenAPI docs at http://localhost:8000/docs
 
     make serve          # start on port 8000 with hot-reload
 """
+
 import logging
 from typing import Annotated
 
@@ -49,6 +50,7 @@ def startup() -> None:
 
 # ── Filers ─────────────────────────────────────────────────────────────────
 
+
 @app.get(
     "/filers",
     summary="List tracked filers",
@@ -70,10 +72,13 @@ def list_filers() -> list[dict]:
 )
 def get_holdings(
     cik: str,
-    quarter: Annotated[str | None, Query(
-        description="Quarter-end date (YYYY-MM-DD). Defaults to most recent.",
-        example="2024-09-30",
-    )] = None,
+    quarter: Annotated[
+        str | None,
+        Query(
+            description="Quarter-end date (YYYY-MM-DD). Defaults to most recent.",
+            example="2024-09-30",
+        ),
+    ] = None,
     limit: Annotated[int, Query(ge=1, le=5000)] = 500,
 ) -> list[dict]:
     """
@@ -124,14 +129,20 @@ def get_timeline(cik: str) -> list[dict]:
 )
 def get_changes(
     cik: str,
-    from_quarter: Annotated[str, Query(
-        description="Starting quarter-end date (YYYY-MM-DD)",
-        example="2024-06-30",
-    )],
-    to_quarter: Annotated[str, Query(
-        description="Ending quarter-end date (YYYY-MM-DD)",
-        example="2024-09-30",
-    )],
+    from_quarter: Annotated[
+        str,
+        Query(
+            description="Starting quarter-end date (YYYY-MM-DD)",
+            example="2024-06-30",
+        ),
+    ],
+    to_quarter: Annotated[
+        str,
+        Query(
+            description="Ending quarter-end date (YYYY-MM-DD)",
+            example="2024-09-30",
+        ),
+    ],
 ) -> list[dict]:
     """
     Returns positions that changed materially (>5%) between two quarters,
@@ -148,6 +159,7 @@ def get_changes(
 
 # ── Securities ─────────────────────────────────────────────────────────────
 
+
 @app.get(
     "/securities/{cusip}/holders",
     summary="Who holds a given security",
@@ -155,10 +167,13 @@ def get_changes(
 )
 def get_holders(
     cusip: str,
-    quarter: Annotated[str | None, Query(
-        description="Quarter-end date (YYYY-MM-DD). Defaults to most recent available.",
-        example="2024-09-30",
-    )] = None,
+    quarter: Annotated[
+        str | None,
+        Query(
+            description="Quarter-end date (YYYY-MM-DD). Defaults to most recent available.",
+            example="2024-09-30",
+        ),
+    ] = None,
 ) -> list[dict]:
     """
     Returns all filers that held a given CUSIP in a quarter, sorted by
@@ -174,6 +189,7 @@ def get_holders(
 
 
 # ── Health ─────────────────────────────────────────────────────────────────
+
 
 @app.get("/health", include_in_schema=False)
 def health() -> dict:

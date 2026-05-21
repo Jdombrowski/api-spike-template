@@ -11,6 +11,7 @@ Key findings documented here:
   - The same CUSIP can appear multiple times (different share classes, PRN vs SH)
   - ticker is NOT present in the InfoTable — requires separate CUSIP→ticker resolution
 """
+
 import logging
 import re
 import xml.etree.ElementTree as ET
@@ -59,10 +60,10 @@ class ThirteenFMapper:
 
     # Tags with direct scalar mappings to CanonicalHolding fields
     _CONFIRMED = {
-        "nameOfIssuer":         "entity_name",
-        "titleOfClass":         "title_of_class",
-        "cusip":                "cusip",
-        "value":                "market_value_usd",   # CONFIRMED: USD thousands
+        "nameOfIssuer": "entity_name",
+        "titleOfClass": "title_of_class",
+        "cusip": "cusip",
+        "value": "market_value_usd",  # CONFIRMED: USD thousands
         "investmentDiscretion": "investment_discretion",
     }
 
@@ -70,10 +71,10 @@ class ThirteenFMapper:
     _KNOWN_UNMAPPED = {"votingAuthority"}
 
     def __init__(self, cik: str, filing_meta: dict):
-        self.cik         = cik
+        self.cik = cik
         self.filing_date = filing_meta.get("filing_date")
-        self.form_type   = filing_meta.get("form")
-        self.accession   = filing_meta.get("accession_number", "")
+        self.form_type = filing_meta.get("form")
+        self.accession = filing_meta.get("accession_number", "")
 
     def parse(self, xml_text: str) -> list[CanonicalHolding]:
         """Parse InfoTable XML and return one CanonicalHolding per <infoTable> element."""
@@ -82,20 +83,21 @@ class ThirteenFMapper:
         try:
             root = ET.fromstring(cleaned)
         except ET.ParseError as exc:
-            raise ValueError(f"[holdings_mapper] XML parse error for CIK {self.cik}: {exc}") from exc
+            raise ValueError(
+                f"[holdings_mapper] XML parse error for CIK {self.cik}: {exc}"
+            ) from exc
 
         results = [
-            h for elem in root.findall(".//infoTable")
-            if (h := self._map_element(elem)) is not None
+            h for elem in root.findall(".//infoTable") if (h := self._map_element(elem)) is not None
         ]
         log.info("[holdings_mapper] parsed %d holdings for CIK %s", len(results), self.cik)
         return results
 
     def _map_element(self, elem: ET.Element) -> CanonicalHolding | None:
         assumptions: list[str] = []
-        unmapped:    list[str] = []
+        unmapped: list[str] = []
 
-        name  = (elem.findtext("nameOfIssuer") or "").strip()
+        name = (elem.findtext("nameOfIssuer") or "").strip()
         cusip = (elem.findtext("cusip") or "").strip()
 
         value_reported = _parse_int(elem.findtext("value"), "value", assumptions)
@@ -104,35 +106,34 @@ class ThirteenFMapper:
         # Flag tags we haven't seen before
         known = set(self._CONFIRMED) | self._KNOWN_UNMAPPED | {"shrsOrPrnAmt"}
         for child in elem:
-            tag = child.tag.split("}")[-1]   # strip XML namespace prefix if present
+            tag = child.tag.split("}")[-1]  # strip XML namespace prefix if present
             if tag not in known:
                 unmapped.append(tag)
 
         value_unit = _infer_value_unit(value_reported, shares, assumptions)
 
         return CanonicalHolding(
-            source           = "edgar_13f",
-            source_entity_id = self.cik,
-            canonical_id     = f"{self.cik}:{self.accession}:{cusip}",
-            entity_name      = name,
-            ticker           = None,             # not in 13F — needs CUSIP resolution
-            cusip            = cusip or None,
-            shares_held      = float(shares) if shares is not None else None,
-            market_value_usd = float(value_reported) if value_reported is not None else None,
-            value_unit       = value_unit,
-            as_of_date       = derive_quarter_end(self.filing_date),
-            filing_date      = self.filing_date,
-            form_type        = self.form_type,
-            assumptions      = assumptions,
-            unmapped_fields  = unmapped,
+            source="edgar_13f",
+            source_entity_id=self.cik,
+            canonical_id=f"{self.cik}:{self.accession}:{cusip}",
+            entity_name=name,
+            ticker=None,  # not in 13F — needs CUSIP resolution
+            cusip=cusip or None,
+            shares_held=float(shares) if shares is not None else None,
+            market_value_usd=float(value_reported) if value_reported is not None else None,
+            value_unit=value_unit,
+            as_of_date=derive_quarter_end(self.filing_date),
+            filing_date=self.filing_date,
+            form_type=self.form_type,
+            assumptions=assumptions,
+            unmapped_fields=unmapped,
         )
 
 
 # ── Private helpers ────────────────────────────────────────────────────────
 
-def _infer_value_unit(
-    value: int | None, shares: int | None, assumptions: list[str]
-) -> str:
+
+def _infer_value_unit(value: int | None, shares: int | None, assumptions: list[str]) -> str:
     """
     Detect whether <value> is in USD thousands (SEC standard) or full USD.
 
@@ -167,9 +168,7 @@ def _parse_int(text: str | None, field: str, assumptions: list[str]) -> int | No
         return None
 
 
-def _parse_shares(
-    elem: ET.Element, assumptions: list[str]
-) -> tuple[int | None, str | None]:
+def _parse_shares(elem: ET.Element, assumptions: list[str]) -> tuple[int | None, str | None]:
     shrs = elem.find("shrsOrPrnAmt")
     if shrs is None:
         return None, None
