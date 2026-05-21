@@ -17,7 +17,8 @@ concept appears under different keys across entity types and time periods.
 1. Ingested raw responses for a diverse sample of filers (large asset managers + mid-size RIAs)
 2. Profiled field presence, nullability, and type consistency across the sample
 3. Cross-referenced against Polygon.io to validate entity identity and field interpretations
-4. Documented every mapping decision with a CONFIRMED or ASSUMPTION flag
+4. Parsed 13F-HR InfoTable XML and cross-validated reported values against Polygon market prices
+5. Documented every mapping decision with a CONFIRMED, ASSUMPTION, or UNMAPPED flag
 
 ---
 
@@ -85,21 +86,93 @@ Cross-reference validates: EDGAR `Assets` for Berkshire ≈ market data. Confirm
 
 ---
 
-## 13F Filing Values — Units Gotcha
+## 13F InfoTable XML — Field Inventory
 
-**Finding:** 13F-HR filings report holding values in **USD thousands**, not whole USD.
-This is stated in the 13F instructions but NOT reflected in the API response field names.
+13F-HR filings include an InfoTable XML document (separate from the cover page) containing
+one `<infoTable>` element per position held.
 
-| what it says         | what it means                     |
-| -------------------- | --------------------------------- |
-| `"value": 15234567"` | $15,234,567,000 (fifteen billion) |
+| XML tag                     | canonical name           | status        | notes                                                                                                     |
+| --------------------------- | ------------------------ | ------------- | --------------------------------------------------------------------------------------------------------- |
+| `<nameOfIssuer>`            | `entity_name`            | ✅ CONFIRMED  | Legal name of the issuer as reported by the filer. Format varies — not normalized.                        |
+| `<cusip>`                   | `cusip`                  | ✅ CONFIRMED  | 9-character CUSIP identifier. Most reliable cross-reference key for equities.                             |
+| `<value>`                   | `market_value_usd`       | ⚠️ ASSUMPTION | See units section below — may be thousands or full USD depending on filing era.                           |
+| `<sshPrnamtType>`           | `value_unit` (inferred)  | ✅ CONFIRMED  | `"SH"` = share count; `"PRN"` = principal amount (bonds/notes). Critical for cross-validation validity.   |
+| `<sshPrnamt>`               | `shares_held`            | ✅ CONFIRMED  | Share count when `sshPrnamtType = "SH"`. Principal amount when `"PRN"` — not comparable to price × shares.|
+| `<titleOfClass>`            | `title_of_class`         | ✅ CONFIRMED  | Share class description (e.g. `"COM"`, `"CL A"`, `"PFD"`). Useful for identifying non-common instruments.|
+| `<investmentDiscretion>`    | `investment_discretion`  | ✅ CONFIRMED  | `"SOLE"`, `"SHARED"`, or `"OTHER"`. Indicates reporting manager's control over the position.              |
+| `<votingAuthority>`         | _(intentionally unmapped)_| 🔲 UNMAPPED  | Sole/shared/none vote counts. Not used in current pipeline — kept for completeness.                       |
 
-**Canonical mapping:** store raw value + `value_unit: "USD_THOUSANDS"` flag.
-Downstream models must multiply by 1000 before displaying to users.
+---
 
-**This is exactly the kind of silent data quality issue that would cause a balance
-discrepancy in a real financial pipeline.** Without this flag, a holdings report
-would show values 1000x too small.
+## 13F Filing Values — Units Discovery
+
+**Finding:** 13F `<value>` unit is filing-era dependent — not universally USD thousands.
+
+SEC 13F instructions specify values in **USD thousands**, and older filings conform to this.
+However, live investigation against recent EDGAR filings revealed values in **full USD** for
+some filers and time periods. The `<value>` field carries no explicit unit tag.
+
+**Detection heuristic** (implemented in `holdings_mapper.py`):
+
+```
+implied_price = value / shares_held
+
+if implied_price >= $5:   → value is in full USD (USD)
+else:                     → value is in thousands (USD_THOUSANDS)
+```
+
+Rationale: for any institutional equity holding, `value_usd / shares` should equal
+the stock price. A sub-$5 implied price is implausible for the large-cap equities
+that dominate 13F filings, so the value must be in thousands.
+
+Edge case: stocks priced above $5,000/share (e.g. BRK.A) held in USD thousands
+would have `value/shares ≈ $700`, falsely triggering the USD branch. This is logged
+as an assumption for manual review.
+
+**Before this fix**, cross-validation produced ratio = 0.001 for all positions in
+recent filings — a 1000× systematic error that would silently understate every
+reported holding value.
+
+| era              | observed unit  | example                              |
+| ---------------- | -------------- | ------------------------------------ |
+| Older filings    | USD_THOUSANDS  | `<value>174523</value>` = $174.5M    |
+| Recent filings   | USD            | `<value>15618994925</value>` = $15.6B|
+
+---
+
+## 13F Cross-Validation Methodology
+
+**Goal:** Verify that reported holding values are internally consistent with reported share counts.
+
+```
+ratio = (shares_held × closing_price_at_quarter_end) / reported_value_usd
+
+CLOSE     → ratio within 15% of 1.0   (rounding + price-date drift acceptable)
+DIVERGENT → ratio outside 15%         (investigate: wrong price date, non-equity, etc.)
+NO_PRICE  → ticker unresolved or Polygon returned no bar for that date
+```
+
+**Ticker resolution** (in priority order):
+
+1. CUSIP lookup via Polygon `/v3/reference/tickers?cusip=<cusip>` — exact match
+2. Name search via Polygon `/v3/reference/tickers?search=<name>` — fuzzy fallback
+
+Name search alone produced systematic DIVERGENT results because 13F issuer names
+use legal entity formats (`"AMAZON COM INC"`, `"ALPHABET INC CL C CAPITAL STOCK"`)
+that don't match Polygon's normalized names reliably. CUSIP is the correct primary key.
+
+**Quarter-end date handling:**
+
+Quarter-end dates frequently fall on weekends (e.g. December 31, September 30).
+Querying Polygon for a single non-trading date returns no bars → NO_PRICE.
+Fix: use a 7-day lookback window (`from_date = quarter_end - 7 days`) and take
+the most recent bar — the nearest preceding trading day's close.
+
+**Legitimate DIVERGENT cases** (not bugs):
+
+- `sshPrnamtType = "PRN"` — principal amount of bonds/notes; price × shares is undefined
+- ADRs with non-1 underlying ratios (1 ADR = 5 shares)
+- Positions with significant price movement between as-of date and filing date (45-day lag)
 
 ---
 
@@ -132,9 +205,10 @@ per-concept validation before use in production financial reporting.
 ## Open Assumptions (needs validation before production)
 
 - [ ] `fiscalYearEnd` format is `MMDD` — validate against 5+ known fiscal calendars
-- [ ] 13F holding values in USD thousands — validate 3 known holdings against Polygon market cap
 - [ ] `entityType` null for foreign filers — confirm vs. a known foreign ADR
-- [ ] `facts.us-gaap` concept synonym coverage — audit for gaps in our synonym map
+- [ ] `facts.us-gaap` concept synonym coverage — audit for gaps in synonym map
+- [ ] 13F value unit heuristic edge case — BRK.A and other $5,000+ stocks held in thousands would be misidentified as USD; verify against known Berkshire-held positions
+- [ ] PRN-type cross-validation — current pipeline flags PRN holdings as assumptions but still attempts price × shares; result is always meaningless for fixed income
 
 ---
 
@@ -146,9 +220,21 @@ per-concept validation before use in production financial reporting.
 2. **Track absent vs. null separately.** Empty list `[]` and missing key
    have different semantics in this API. The mapper handles both.
 
-3. **Document unit assumptions explicitly.** The 13F thousands issue would
-   be invisible in a pipeline without the `value_unit` flag.
+3. **Document unit assumptions explicitly.** The 13F value unit issue would
+   be invisible in a pipeline without the `value_unit` flag and the inferred-unit
+   assumption log. Without it, a holdings report would show values at either
+   1000× the correct amount or 1/1000 — depending on filing era.
 
 4. **Build drift detection on day one.** SEC updated the `entityType` enum
    values in a 2022 regulatory change. A drift detector would have caught it
-   the same day the change deployed.
+   the same day the change deployed. A pipeline without drift detection silently broke.
+
+5. **CUSIP is the right primary key for securities, not name.** Institutional
+   name formats (`"AMAZON COM INC"`) diverge from market-data vendor formats.
+   CUSIP is a stable 9-character identifier present in every 13F row and
+   supported by Polygon's reference API — use it first, name search as fallback only.
+
+6. **Quarter-end dates are often non-trading days.** December 31 and September 30
+   frequently fall on weekends. A pipeline that fetches prices for the exact
+   quarter-end date will silently produce NO_PRICE for entire quarters.
+   Always use a lookback window and take the nearest preceding close.
