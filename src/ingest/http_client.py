@@ -134,6 +134,7 @@ def _fetch(
     source: str,
     params: dict | None = None,
     headers: dict | None = None,
+    timeout: int | None = None,
 ) -> requests.Response:
     """
     Core retry + circuit-breaker loop. Returns the raw Response object.
@@ -141,13 +142,14 @@ def _fetch(
     """
     breaker = _breaker(source)
     session = requests.Session()
+    _timeout = timeout if timeout is not None else config.REQUEST_TIMEOUT
 
     for attempt in range(config.MAX_RETRIES):
         breaker.allow_request()  # raises CircuitOpenError if open
         _throttle(source)
 
         try:
-            resp = session.get(url, params=params, headers=headers, timeout=config.REQUEST_TIMEOUT)
+            resp = session.get(url, params=params, headers=headers, timeout=_timeout)
 
             # ── Don't retry client errors ──────────────────────────────
             if resp.status_code == 400:
@@ -232,9 +234,10 @@ def get_bytes(
     source: str,
     params: dict | None = None,
     headers: dict | None = None,
+    timeout: int | None = None,
 ) -> bytes:
     """GET → raw bytes (ZIP archives, binary content). Same retry logic as get()."""
-    return _fetch(url, source=source, params=params, headers=headers).content
+    return _fetch(url, source=source, params=params, headers=headers, timeout=timeout).content
 
 
 def _save_sample(data: Any, source: str, name: str):

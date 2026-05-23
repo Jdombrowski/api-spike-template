@@ -3,6 +3,7 @@
 data/db.sqlite
 data/samples/
 data/exports/
+data/dera/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

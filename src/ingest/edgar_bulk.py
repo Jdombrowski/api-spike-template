@@ -21,6 +21,7 @@ Usage:
 """
 
 import argparse
+import calendar
 import csv
 import io
 import logging
@@ -42,7 +43,7 @@ from src.storage.db import init_db, query_holdings_summary, save_holdings
 log = logging.getLogger(__name__)
 console = Console()
 
-_DERA_BASE = "https://www.sec.gov/files/dera/data/form-13f-data-sets"
+_DERA_BASE = "https://www.sec.gov/files/structureddata/data/form-13f-data-sets"
 _HEADERS = {"User-Agent": config.EDGAR_USER_AGENT}
 _CACHE_DIR = config.PROJECT_ROOT / "data" / "dera"
 
@@ -100,6 +101,33 @@ def run(ciks: list[str], quarters: int = 8) -> None:
 # ── Per-quarter ingest ─────────────────────────────────────────────────────
 
 
+def _quarter_filename(year: int, quarter: int) -> str:
+    """
+    Return the DERA ZIP filename for a given (year, quarter) pair.
+
+    SEC changed the naming convention starting in 2024:
+      2023 and earlier: {year}q{n}_form13f.zip
+      2024 and later:   filing-date-range format, e.g. 01mar2024-31may2024_form13f.zip
+
+    The date ranges reflect when filings are received, not the period of report:
+      Q1 (Jan-Mar period): filed Mar-May  → 01mar{y}-31may{y}
+      Q2 (Apr-Jun period): filed Jun-Aug  → 01jun{y}-31aug{y}
+      Q3 (Jul-Sep period): filed Sep-Nov  → 01sep{y}-30nov{y}
+      Q4 (Oct-Dec period): filed Dec-Feb  → 01dec{y}-{feb}{y+1}
+    """
+    if year <= 2023:
+        return f"{year}q{quarter}_form13f.zip"
+    if quarter == 1:
+        return f"01mar{year}-31may{year}_form13f.zip"
+    if quarter == 2:
+        return f"01jun{year}-31aug{year}_form13f.zip"
+    if quarter == 3:
+        return f"01sep{year}-30nov{year}_form13f.zip"
+    # Q4: spans into next year; Feb end-day depends on leap year
+    feb_end = 29 if calendar.isleap(year + 1) else 28
+    return f"01dec{year}-{feb_end:02d}feb{year + 1}_form13f.zip"
+
+
 def _ingest_quarter(year: int, quarter: int, target_ciks: set[str]) -> int:
     label = f"{year}q{quarter}"
     cache_path = _CACHE_DIR / f"{label}_form13f.zip"
@@ -108,10 +136,10 @@ def _ingest_quarter(year: int, quarter: int, target_ciks: set[str]) -> int:
         console.print(f"\n[cyan]→ {year} Q{quarter}[/cyan]  [dim](cached)[/dim]")
         zip_bytes = cache_path.read_bytes()
     else:
-        url = f"{_DERA_BASE}/{label}_form13f.zip"
+        url = f"{_DERA_BASE}/{_quarter_filename(year, quarter)}"
         console.print(f"\n[cyan]→ {year} Q{quarter}[/cyan]  {url}")
         try:
-            zip_bytes = get_bytes(url, source="edgar", headers=_HEADERS)
+            zip_bytes = get_bytes(url, source="edgar", headers=_HEADERS, timeout=300)
         except LookupError:
             console.print("  [yellow]⚠[/yellow] Dataset not yet published — skipping")
             return 0

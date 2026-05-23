@@ -8,6 +8,7 @@ Auto-generated OpenAPI docs at http://localhost:8000/docs
 """
 
 import logging
+from contextlib import asynccontextmanager
 from typing import Annotated
 
 from fastapi import FastAPI, HTTPException, Query
@@ -25,6 +26,13 @@ from src.storage.db import (
 
 log = logging.getLogger(__name__)
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    yield
+
+
 app = FastAPI(
     title="13F Holdings API",
     description=(
@@ -33,6 +41,7 @@ app = FastAPI(
         "`make run-holdings` (current quarter with Polygon cross-validation)."
     ),
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -41,11 +50,6 @@ app.add_middleware(
     allow_methods=["GET"],
     allow_headers=["*"],
 )
-
-
-@app.on_event("startup")
-def startup() -> None:
-    init_db()
 
 
 # ── Filers ─────────────────────────────────────────────────────────────────
@@ -76,7 +80,7 @@ def get_holdings(
         str | None,
         Query(
             description="Quarter-end date (YYYY-MM-DD). Defaults to most recent.",
-            example="2024-09-30",
+            examples=["2024-09-30"],
         ),
     ] = None,
     limit: Annotated[int, Query(ge=1, le=5000)] = 500,
@@ -133,14 +137,14 @@ def get_changes(
         str,
         Query(
             description="Starting quarter-end date (YYYY-MM-DD)",
-            example="2024-06-30",
+            examples=["2024-06-30"],
         ),
     ],
     to_quarter: Annotated[
         str,
         Query(
             description="Ending quarter-end date (YYYY-MM-DD)",
-            example="2024-09-30",
+            examples=["2024-09-30"],
         ),
     ],
 ) -> list[dict]:
@@ -171,7 +175,7 @@ def get_holders(
         str | None,
         Query(
             description="Quarter-end date (YYYY-MM-DD). Defaults to most recent available.",
-            example="2024-09-30",
+            examples=["2024-09-30"],
         ),
     ] = None,
 ) -> list[dict]:
