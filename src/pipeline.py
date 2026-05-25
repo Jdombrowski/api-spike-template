@@ -101,7 +101,9 @@ def run(ciks: list[str], save_samples: bool = True):
         # Prefer tickers from the already-fetched EDGAR submissions; fall back to name search
         # EDGAR uses hyphens for class shares (BRK-B); Polygon requires dots (BRK.B)
         edgar_tickers = edgar_raw.get("tickers", [])
-        raw_ticker = edgar_tickers[0] if edgar_tickers else search_ticker_by_name(edgar_raw.get("name", ""))
+        raw_ticker = (
+            edgar_tickers[0] if edgar_tickers else search_ticker_by_name(edgar_raw.get("name", ""))
+        )
         ticker = raw_ticker.replace("-", ".") if raw_ticker else None
         polygon_raw_id = None
         polygon_raw = None
@@ -112,9 +114,11 @@ def run(ciks: list[str], save_samples: bool = True):
                 polygon_raw_id = save_raw("polygon", "ticker_details", ticker, polygon_raw)
                 console.print(f"    [green]✓[/green] EDGAR + Polygon ({ticker})")
             except Exception as e:
-                console.print(f"    [yellow]⚠[/yellow] EDGAR only — Polygon failed for {ticker}: {e}")
+                console.print(
+                    f"    [yellow]⚠[/yellow] EDGAR only — Polygon failed for {ticker}: {e}"
+                )
         else:
-            console.print(f"    [yellow]⚠[/yellow] EDGAR only — no ticker resolved")
+            console.print("    [yellow]⚠[/yellow] EDGAR only — no ticker resolved")
 
         reconciliations.append((cik, edgar_raw, edgar_raw_id, polygon_raw, polygon_raw_id))
 
@@ -141,7 +145,9 @@ def run(ciks: list[str], save_samples: bool = True):
     # Set baseline if this is the first run
     if not drift_detector:
         console.print("\n[yellow]No drift baseline exists — creating from this run[/yellow]")
-        drift_detector = SchemaDriftDetector("edgar_company_facts", max_depth=config.PROFILE_MAX_DEPTH)
+        drift_detector = SchemaDriftDetector(
+            "edgar_company_facts", max_depth=config.PROFILE_MAX_DEPTH
+        )
         drift_detector.set_baseline_from_profiler(edgar_profiler)
         drift_detector.save_baseline(baseline_path)
         console.print(f"[dim]Baseline saved → {baseline_path}[/dim]")
@@ -208,12 +214,14 @@ def run(ciks: list[str], save_samples: bool = True):
             return "[green]✓[/green]"
         if check["status"] == "SIMILAR":
             return "[green]~[/green]"
-        return f"[red]✗[/red]"
+        return "[red]✗[/red]"
 
     for cik, _, edgar_raw_id, polygon_raw, polygon_raw_id in reconciliations:
         label = entity_names.get(cik, cik)
         if cik not in edgar_canonicals or cik not in polygon_canonicals:
-            recon_table.add_row(label, "[dim]—[/dim]", "[dim]—[/dim]", "[dim]—[/dim]", "[dim]skipped[/dim]")
+            recon_table.add_row(
+                label, "[dim]—[/dim]", "[dim]—[/dim]", "[dim]—[/dim]", "[dim]skipped[/dim]"
+            )
             continue
 
         result = reconcile_entity(edgar_canonicals[cik], polygon_canonicals[cik])
@@ -243,7 +251,9 @@ def run(ciks: list[str], save_samples: bool = True):
     summary_table.add_column("count", justify="right")
     for row in drift_rows:
         color = "red" if row["severity"] == "ERROR" else "yellow"
-        summary_table.add_row(row["source"], f"[{color}]{row['severity']}[/{color}]", f"×{row['count']}")
+        summary_table.add_row(
+            row["source"], f"[{color}]{row['severity']}[/{color}]", f"×{row['count']}"
+        )
     if not drift_rows:
         summary_table.add_row("[dim]—[/dim]", "[dim]none[/dim]", "[dim]0[/dim]")
 

@@ -70,9 +70,9 @@ run-holdings: ## Extract and cross-validate 13F positions  (usage: make run-hold
 run-bulk: ## Ingest DERA 13F bulk datasets  (usage: make run-bulk QUARTERS=8 CIK="0001067983 0001364742")
 	$(PY) -m src.ingest.edgar_bulk $(if $(CIK),--cik $(CIK),) --quarters $(or $(QUARTERS),8)
 
-.PHONY: serve
-serve: ## Start the 13F holdings API on localhost:8000  (docs at /docs)
-	$(VENV)/bin/uvicorn src.holdings_api:app --reload --port 8000
+# .PHONY: serve # TODO: implement before exposing Makefile
+# serve: ## Start the 13F holdings API on localhost:8000  (docs at /docs)
+# 	$(VENV)/bin/uvicorn src.holdings_api:app --reload --port 8000
 
 # ── Code quality ───────────────────────────────────────────────────────────────
 .PHONY: format

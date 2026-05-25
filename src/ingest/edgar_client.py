@@ -28,8 +28,8 @@ _HEADERS = {"User-Agent": config.EDGAR_USER_AGENT, "Accept": "application/json"}
 # CIK numbers are stable identifiers in EDGAR (analogous to account_id in custodian APIs)
 SAMPLE_FILERS = {
     "berkshire_hathaway": "0001067983",
-    "blackrock": "0002012383",   # BlackRock, Inc. (BLK) — CIK 1364742 is a non-public subsidiary
-    "vanguard": "0000102909",    # Vanguard Group is privately held — no exchange ticker expected
+    "blackrock": "0002012383",  # BlackRock, Inc. (BLK) — CIK 1364742 is a non-public subsidiary
+    "vanguard": "0000102909",  # Vanguard Group is privately held — no exchange ticker expected
     "fidelity": "0000315066",
     "ares_management": "0001555280",  # mid-size RIA — closer to Atomic's clients
 }

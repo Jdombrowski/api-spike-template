@@ -13,9 +13,9 @@ field mappings or transformation logic tested here.
 import pytest
 
 from src import config
+from src.ingest import edgar_client
 
 pytestmark = pytest.mark.live
-from src.ingest import edgar_client
 
 CIK = edgar_client.SAMPLE_FILERS["berkshire_hathaway"]
 

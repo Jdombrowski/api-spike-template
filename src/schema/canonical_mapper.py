@@ -97,19 +97,19 @@ class EdgarCompanyFactsMapper:
         "ownerOrg",
         "insiderTransactionForOwnerExists",
         "insiderTransactionForIssuerExists",
-        "lei",               # Legal Entity Identifier — useful for cross-referencing
+        "lei",  # Legal Entity Identifier — useful for cross-referencing
         "description",
         "website",
         "investorWebsite",
-        "category",          # e.g. "Domestic Operating Companies"
+        "category",  # e.g. "Domestic Operating Companies"
         "stateOfIncorporationDescription",
         "phone",
         "flags",
-        "formerNames",       # list of {"date": ..., "name": ...} — useful for alias matching
-        "addresses",         # mailing + business — not needed for holdings use case
-        "filings",           # filing history — separate mapper
+        "formerNames",  # list of {"date": ..., "name": ...} — useful for alias matching
+        "addresses",  # mailing + business — not needed for holdings use case
+        "filings",  # filing history — separate mapper
         # Company facts endpoint
-        "facts",             # deeply nested XBRL data — needs its own profiler pass
+        "facts",  # deeply nested XBRL data — needs its own profiler pass
     ]
 
     def map(self, raw: dict) -> dict:

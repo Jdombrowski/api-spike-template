@@ -5,8 +5,13 @@ Downloads quarterly 13F structured data directly from SEC DERA, bypassing
 per-filing API calls and rate limits entirely. Produces the same holdings
 row format as holdings_pipeline.py so both paths feed the same table.
 
-DERA dataset URL pattern:
-    https://www.sec.gov/files/dera/data/form-13f-data-sets/{year}q{n}_form13f.zip
+DERA dataset base URL:
+    https://www.sec.gov/files/structureddata/data/form-13f-data-sets/
+
+Filename convention (changed in 2024):
+    2023 and earlier: {year}q{n}_form13f.zip
+    2024 and later:   filing-date-range format, e.g. 01mar2024-31may2024_form13f.zip
+    See _quarter_filename() for the full mapping.
 
 Each ZIP contains two TSV files:
     SUBMISSION.tsv  — one row per 13F filing (CIK, period, accession number)
@@ -195,7 +200,7 @@ def _parse_zip(zip_bytes: bytes, target_ciks: set[str]) -> list[dict]:
     Parse a DERA quarterly ZIP into holding dicts filtered to target_ciks.
 
     Joins SUBMISSION.tsv (filing metadata) with INFOTABLE.tsv (positions)
-    on ACCESSION_NUMBER. PERIOD_OF_REPORT is the authoritative quarter-end
+    on ACCESSION_NUMBER. PERIODOFREPORT is the authoritative quarter-end
     date — no derive_quarter_end heuristic needed here.
     """
     with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:

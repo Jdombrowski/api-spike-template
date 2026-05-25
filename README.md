@@ -47,9 +47,10 @@ make init          # create venv, install deps, scaffold .env
 #   POLYGON_API_KEY=your_key       (free tier at polygon.io)
 #   EDGAR_USER_AGENT="Name email"  (required by SEC rate-limiting policy)
 
-make test          # 94 unit tests, no network calls
+make test          # 171 unit tests, no network calls
 make run           # ingest entity data for 3 default filers
 make run-holdings  # parse 13F positions + cross-validate against Polygon prices
+make run-bulk      # download 8 quarters of DERA 13F bulk data (~1.6 GB, cached)
 make report        # rich terminal summary of all findings
 make export        # write findings to timestamped CSVs in data/exports/
 ```
@@ -59,6 +60,7 @@ To target specific filers:
 ```bash
 make run-cik CIK=0001067983
 make run-holdings CIK=0001067983 VALIDATE_TOP=25
+make run-bulk QUARTERS=4 CIK="0001067983 0001364742"
 ```
 
 ---
@@ -74,6 +76,8 @@ api-spike-template/
 │   │                           reconcile for entity-level data
 │   ├── holdings_pipeline.py    Stage 2: 13F InfoTable XML → positions →
 │   │                           Polygon price cross-validation
+│   ├── holdings_api.py         Stage 4: FastAPI serving layer — /filers,
+│   │                           /holdings, /timeline, /changes, /holders
 │   ├── report.py               Query layer + rich terminal report + CSV export
 │   ├── ingest/
 │   │   ├── http_client.py      Resilient HTTP: exponential backoff + full jitter,
@@ -81,6 +85,8 @@ api-spike-template/
 │   │   │                       response snapshot saving
 │   │   ├── edgar_client.py     SEC EDGAR: companyfacts, submissions, 13F filing
 │   │   │                       index + InfoTable XML retrieval
+│   │   ├── edgar_bulk.py       Stage 4: DERA bulk downloader — 8-quarter history
+│   │   │                       via quarterly ZIP files, local cache, CIK filter
 │   │   └── polygon_client.py   Polygon.io: ticker details, daily OHLCV bars,
 │   │                           CUSIP → ticker lookup, name search fallback
 │   ├── profile/
@@ -100,15 +106,19 @@ api-spike-template/
 │   ├── test_core.py            Profiler, drift detector, mapper, reconciliation
 │   ├── test_pipeline.py        End-to-end pipeline with mocked network calls
 │   ├── test_holdings_pipeline.py  XML parsing, cross-validation, DB layer, validate_top
+│   ├── test_bulk.py            DERA bulk parser, quarter helpers, DB idempotency,
+│   │                           delta/timeline/holders queries
+│   ├── test_holdings_api.py    FastAPI endpoints: happy paths, 404s, query params
 │   ├── test_report.py          All query functions, report(), export()
-│   ├── test_edgar_client.py    Live EDGAR integration tests
-│   └── test_polygon_client.py  Live Polygon integration tests
+│   ├── test_edgar_client.py    Live EDGAR integration tests (make test-edgar)
+│   └── test_polygon_client.py  Live Polygon integration tests (make test-polygon)
 ├── docs/
 │   ├── field_mapping.md        Investigation findings: every mapping decision,
 │   │                           assumption, and discovered data quality issue
 │   └── edgar_profile.md        Generated schema inventory and anomaly report
 ├── data/
 │   ├── baselines/              Drift detector snapshots (committed — tracked over time)
+│   ├── dera/                   Cached DERA quarterly ZIPs (gitignored, ~200 MB each)
 │   ├── samples/                Raw API response snapshots (gitignored)
 │   └── db.sqlite               Investigation database (gitignored)
 └── Makefile                    Self-documenting — run `make help` for all targets
@@ -118,7 +128,7 @@ api-spike-template/
 
 ## Investigation Methodology
 
-**Stage 1 — Entity pipeline**
+### Stage 1 — Entity pipeline
 
 1. **Get real data first.** `make run` ingests live responses for a sample of
    filers (large asset managers + mid-size RIAs). Raw responses are saved to
@@ -142,13 +152,13 @@ api-spike-template/
    subsequent ingestion is checked against it. Schema changes produce `ERROR`,
    `WARNING`, or `INFO` events logged to the database.
 
-**Stage 2 — Holdings pipeline**
+### Stage 2 — Holdings pipeline
 
-6. **Parse 13F positions.** `make run-holdings` fetches 13F-HR InfoTable XML
+1. **Parse 13F positions.** `make run-holdings` fetches 13F-HR InfoTable XML
    from EDGAR, parses each `<infoTable>` element into a `CanonicalHolding`, and
    stores all positions with their raw values.
 
-7. **Cross-validate against market prices.** For the top N positions by reported
+2. **Cross-validate against market prices.** For the top N positions by reported
    value (default 10, to respect Polygon's free-tier rate limit), the pipeline
    resolves CUSIP → ticker, fetches the quarter-end closing price, and computes:
 
@@ -158,6 +168,18 @@ api-spike-template/
    DIVERGENT → outside 15%  (investigate: wrong date, non-equity, ADR ratio)
    NO_PRICE  → ticker unresolved or no bar found
    ```
+
+### Stage 4 — Bulk history + API
+
+1. **Build a multi-quarter dataset without per-filing API calls.** `make run-bulk`
+   downloads DERA structured data ZIPs directly from SEC (~200 MB/quarter), parses
+   SUBMISSION + INFOTABLE TSVs into the same holdings schema as Stage 2, and filters
+   to target CIKs at parse time. ZIPs are cached locally so subsequent runs against
+   a different CIK list re-parse from disk.
+
+2. **Serve the dataset via a REST API.** `make serve` starts FastAPI on port 8000
+   with auto-generated OpenAPI docs. Endpoints cover per-filer positions, timeline,
+   quarter-over-quarter changes (>5% threshold), and cross-filer ownership by CUSIP.
 
 ---
 
@@ -253,6 +275,15 @@ BlackRock and Vanguard file 13Fs with 4,000+ positions. Validating all of them
 at 5 req/min would take hours. Sorting by reported value and validating the top N
 covers the economically significant positions — the ones where a data quality
 issue would actually matter — while keeping runtime predictable.
+
+**Why bulk DERA download instead of per-filing API calls for history?**
+Eight quarters of history via the per-filing path would require thousands of
+individual EDGAR requests — one index fetch per filing, one XML fetch per
+InfoTable. DERA publishes pre-joined structured datasets: SUBMISSION.tsv joined
+with INFOTABLE.tsv in a single ZIP, covering every 13F filer that quarter. One
+download replaces thousands of API calls, and the ZIPs are cached locally so
+re-running against a different CIK list is free. The tradeoff is download size
+(~200 MB/quarter) vs. API rate-limit risk. For 8+ quarters, bulk wins.
 
 ---
 
