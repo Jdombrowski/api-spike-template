@@ -21,11 +21,15 @@ Financial APIs are inconsistently documented:
 The naive approach — write a scraper, eyeball a few responses, ship — produces
 pipelines that silently corrupt data or break on schema changes.
 
-This spike demonstrates a systematic investigation methodology instead.
+This spike demonstrates a systematic investigatory approach. 
 
 ---
 
 ## Quick Start
+
+### Pre-reqs
+1. [Polygon API key](https://massive.com/) - now Massive.com
+2. [EDGAR SEC](https://sec-api.io/docs)
 
 ```bash
 make init          # create venv, install deps, scaffold .env
