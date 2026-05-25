@@ -27,6 +27,16 @@ pipelines that silently corrupt data or break on schema changes.
 This spike demonstrates a systematic investigation methodology instead.
 
 ---
+## Example Output
+<img width="856" height="800" alt="image" src="https://github.com/user-attachments/assets/718d8356-3b87-4daa-8aef-9e9a9a0862f6" />
+<img width="1185" height="790" alt="image" src="https://github.com/user-attachments/assets/86afa8f3-3acb-41a0-97b0-22acf10cbe4e" />
+<img width="547" height="344" alt="image" src="https://github.com/user-attachments/assets/64d2a8af-084c-4fc7-8124-fe97af664c6a" />
+<img width="1105" height="148" alt="image" src="https://github.com/user-attachments/assets/1d7ef208-76be-4e7c-a9b4-d1594f04a3e3" />
+
+
+
+
+
 
 ## Quick Start
 
