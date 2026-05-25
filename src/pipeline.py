@@ -19,13 +19,15 @@ Or investigate a specific entity:
 import argparse
 import logging
 
+from rich import box
 from rich.console import Console
 from rich.panel import Panel
+from rich.table import Table
 
 from src import config
 from src.ingest.edgar_client import (
     SAMPLE_FILERS,
-    get_company_facts,
+    get_submissions,
 )
 from src.ingest.polygon_client import get_ticker_details, search_ticker_by_name
 from src.profile.profiler import Profiler
@@ -46,7 +48,7 @@ from src.storage.db import (
 )
 
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.WARNING,
     format="%(asctime)s  %(levelname)-8s  %(name)s  %(message)s",
     datefmt="%H:%M:%S",
 )
@@ -60,7 +62,7 @@ def run(ciks: list[str], save_samples: bool = True):
 
     edgar_mapper = EdgarCompanyFactsMapper()
     polygon_mapper = PolygonTickerMapper()
-    edgar_profiler = Profiler("edgar_company_facts", max_depth=1)
+    edgar_profiler = Profiler("edgar_company_facts", max_depth=config.PROFILE_MAX_DEPTH)
 
     baseline_path = config.PROJECT_ROOT / "data" / "baselines" / "edgar_facts.json"
     drift_detector = SchemaDriftDetector.load(baseline_path) if baseline_path.exists() else None
@@ -76,29 +78,31 @@ def run(ciks: list[str], save_samples: bool = True):
 
     all_edgar_raw = []
     reconciliations = []
+    entity_names: dict[str, str] = {}
 
     # ── Phase 1: Ingest ────────────────────────────────────────────────────
     console.rule("[bold]Phase 1: Ingest")
 
     for cik in ciks:
-        console.print(f"\n[cyan]→ CIK {cik}[/cyan]")
-
-        # EDGAR: company facts
+        # EDGAR: entity submissions (includes tickers, entityType, sic, exchanges, etc.)
         try:
-            edgar_raw = get_company_facts(cik, save_sample=save_samples)
-            edgar_raw_id = save_raw("edgar", "companyfacts", cik, edgar_raw)
+            edgar_raw = get_submissions(cik, save_sample=save_samples)
+            edgar_raw_id = save_raw("edgar", "submissions", cik, edgar_raw)
             all_edgar_raw.append((cik, edgar_raw, edgar_raw_id))
-            console.print(f"  [green]✓[/green] EDGAR facts ({len(edgar_raw)} top-level keys)")
         except Exception as e:
-            console.print(f"  [red]✗[/red] EDGAR facts failed: {e}")
+            console.print(f"  [red]✗[/red] CIK {cik} — EDGAR failed: {e}")
             continue
 
+        entity_name = edgar_raw.get("name", cik)
+        entity_names[cik] = entity_name
+        console.print(f"\n  [cyan]{entity_name}[/cyan]  [dim]{cik}[/dim]")
+
         # Polygon: ticker details (cross-reference source)
-        # Prefer tickers from the already-fetched EDGAR facts; fall back to Polygon name search
+        # Prefer tickers from the already-fetched EDGAR submissions; fall back to name search
+        # EDGAR uses hyphens for class shares (BRK-B); Polygon requires dots (BRK.B)
         edgar_tickers = edgar_raw.get("tickers", [])
-        ticker = (
-            edgar_tickers[0] if edgar_tickers else search_ticker_by_name(edgar_raw.get("name", ""))
-        )
+        raw_ticker = edgar_tickers[0] if edgar_tickers else search_ticker_by_name(edgar_raw.get("name", ""))
+        ticker = raw_ticker.replace("-", ".") if raw_ticker else None
         polygon_raw_id = None
         polygon_raw = None
 
@@ -106,13 +110,11 @@ def run(ciks: list[str], save_samples: bool = True):
             try:
                 polygon_raw = get_ticker_details(ticker, save_sample=save_samples)
                 polygon_raw_id = save_raw("polygon", "ticker_details", ticker, polygon_raw)
-                console.print(f"  [green]✓[/green] Polygon ticker {ticker}")
+                console.print(f"    [green]✓[/green] EDGAR + Polygon ({ticker})")
             except Exception as e:
-                console.print(f"  [yellow]⚠[/yellow] Polygon failed for {ticker}: {e}")
+                console.print(f"    [yellow]⚠[/yellow] EDGAR only — Polygon failed for {ticker}: {e}")
         else:
-            console.print(
-                f"  [yellow]⚠[/yellow] Could not resolve ticker for CIK {cik} — skipping Polygon"
-            )
+            console.print(f"    [yellow]⚠[/yellow] EDGAR only — no ticker resolved")
 
         reconciliations.append((cik, edgar_raw, edgar_raw_id, polygon_raw, polygon_raw_id))
 
@@ -123,17 +125,23 @@ def run(ciks: list[str], save_samples: bool = True):
         # Profile the top-level structure (depth=1 to avoid exploding on 'facts')
         edgar_profiler.add({k: v for k, v in edgar_raw.items() if k != "facts"})
 
-    edgar_profiler.report()
-
-    # Save profile report
     profile_path = config.PROJECT_ROOT / "docs" / "edgar_profile.md"
     edgar_profiler.save_report(profile_path)
-    console.print(f"\n[dim]Profile saved → {profile_path}[/dim]")
+
+    n_fields = len(edgar_profiler._stats)
+    anomalies = [(n, s) for n, s in edgar_profiler._stats.items() if s.anomaly]
+    if anomalies:
+        console.print(f"  [yellow]⚠[/yellow] {n_fields} fields — {len(anomalies)} anomalies:")
+        for name, s in anomalies:
+            console.print(f"    [yellow]{name}[/yellow]: {s.anomaly}")
+    else:
+        console.print(f"  [green]✓[/green] {n_fields} fields profiled — no anomalies")
+    console.print(f"  [dim]Full report → {profile_path}[/dim]")
 
     # Set baseline if this is the first run
     if not drift_detector:
         console.print("\n[yellow]No drift baseline exists — creating from this run[/yellow]")
-        drift_detector = SchemaDriftDetector("edgar_company_facts")
+        drift_detector = SchemaDriftDetector("edgar_company_facts", max_depth=config.PROFILE_MAX_DEPTH)
         drift_detector.set_baseline_from_profiler(edgar_profiler)
         drift_detector.save_baseline(baseline_path)
         console.print(f"[dim]Baseline saved → {baseline_path}[/dim]")
@@ -154,7 +162,7 @@ def run(ciks: list[str], save_samples: bool = True):
                     f"  [{color}]{issue.severity}[/{color}] {issue.field}: {issue.description}"
                 )
         else:
-            console.print(f"  [green]✓[/green] CIK {cik} — no drift detected")
+            console.print(f"  [green]✓[/green] {entity_names.get(cik, cik)} — no drift")
 
     console.print(f"\n[dim]Total drift issues: {total_drift_issues}[/dim]")
 
@@ -169,12 +177,13 @@ def run(ciks: list[str], save_samples: bool = True):
         save_canonical(canonical, edgar_raw_id)
         edgar_canonicals[cik] = canonical
 
+        label = entity_names.get(cik, cik)
         if canonical.get("_mapper_assumptions"):
-            console.print(f"  [yellow]assumptions for CIK {cik}:[/yellow]")
+            console.print(f"  [yellow]⚠[/yellow] {label} — assumptions:")
             for a in canonical["_mapper_assumptions"]:
                 console.print(f"    · {a}")
         else:
-            console.print(f"  [green]✓[/green] CIK {cik} mapped cleanly")
+            console.print(f"  [green]✓[/green] {label}")
 
     for cik, _, edgar_raw_id, polygon_raw, polygon_raw_id in reconciliations:
         if polygon_raw:
@@ -185,39 +194,73 @@ def run(ciks: list[str], save_samples: bool = True):
     # ── Phase 5: Reconciliation ────────────────────────────────────────────
     console.rule("[bold]Phase 5: Cross-Source Reconciliation")
 
+    recon_table = Table(box=box.SIMPLE, show_header=True, header_style="bold", pad_edge=False)
+    recon_table.add_column("entity", style="cyan", no_wrap=True)
+    recon_table.add_column("cik", justify="center")
+    recon_table.add_column("name", justify="center")
+    recon_table.add_column("sic", justify="center")
+    recon_table.add_column("result", justify="right")
+
+    def _check_cell(check: dict | None) -> str:
+        if not check:
+            return "[dim]—[/dim]"
+        if check["status"] == "MATCH":
+            return "[green]✓[/green]"
+        if check["status"] == "SIMILAR":
+            return "[green]~[/green]"
+        return f"[red]✗[/red]"
+
     for cik, _, edgar_raw_id, polygon_raw, polygon_raw_id in reconciliations:
+        label = entity_names.get(cik, cik)
         if cik not in edgar_canonicals or cik not in polygon_canonicals:
-            console.print(f"  [dim]CIK {cik}: skipped (missing one source)[/dim]")
+            recon_table.add_row(label, "[dim]—[/dim]", "[dim]—[/dim]", "[dim]—[/dim]", "[dim]skipped[/dim]")
             continue
 
         result = reconcile_entity(edgar_canonicals[cik], polygon_canonicals[cik])
         save_reconciliation(cik, result, edgar_raw_id, polygon_raw_id)
 
-        status_color = "green" if result["overall"] == "VALIDATED" else "red"
-        console.print(f"  [{status_color}]{result['overall']}[/{status_color}]  CIK {cik}")
-        for check_name, check in result["checks"].items():
-            icon = "✓" if check["status"] in ("MATCH", "SIMILAR") else "✗"
-            color = "green" if icon == "✓" else "red"
-            console.print(
-                f"    [{color}]{icon}[/{color}] {check_name}: "
-                f"edgar={check.get('edgar')} polygon={check.get('polygon')}"
-            )
+        checks = result["checks"]
+        overall_color = "green" if result["overall"] == "VALIDATED" else "red"
+        recon_table.add_row(
+            label,
+            _check_cell(checks.get("cik_match")),
+            _check_cell(checks.get("name_match")),
+            _check_cell(checks.get("sic_match")),
+            f"[{overall_color}]{result['overall']}[/{overall_color}]",
+        )
+
+    console.print(recon_table)
 
     # ── Summary ────────────────────────────────────────────────────────────
     console.rule("[bold]Summary")
-    console.print("\n[bold]Drift events by severity:[/bold]")
-    for row in query_drift_summary():
-        console.print(f"  {row['source']:10s}  {row['severity']:8s}  ×{row['count']}")
 
-    console.print("\n[bold]Reconciliation outcomes:[/bold]")
-    for row in query_reconciliation_summary():
-        console.print(f"  {row['overall_status']:15s}  ×{row['count']}")
+    drift_rows = list(query_drift_summary())
+    recon_rows = list(query_reconciliation_summary())
 
-    console.print(
-        f"\n[dim]Raw responses, canonical records, drift events, and reconciliation "
-        f"results saved to {config.DB_PATH}[/dim]"
-    )
-    console.print("[dim]Profile report → docs/edgar_profile.md[/dim]\n")
+    summary_table = Table(box=box.SIMPLE, show_header=True, header_style="bold", pad_edge=False)
+    summary_table.add_column("source")
+    summary_table.add_column("severity")
+    summary_table.add_column("count", justify="right")
+    for row in drift_rows:
+        color = "red" if row["severity"] == "ERROR" else "yellow"
+        summary_table.add_row(row["source"], f"[{color}]{row['severity']}[/{color}]", f"×{row['count']}")
+    if not drift_rows:
+        summary_table.add_row("[dim]—[/dim]", "[dim]none[/dim]", "[dim]0[/dim]")
+
+    outcome_table = Table(box=box.SIMPLE, show_header=True, header_style="bold", pad_edge=False)
+    outcome_table.add_column("outcome")
+    outcome_table.add_column("count", justify="right")
+    for row in recon_rows:
+        color = "green" if row["overall_status"] == "VALIDATED" else "red"
+        outcome_table.add_row(f"[{color}]{row['overall_status']}[/{color}]", f"×{row['count']}")
+    if not recon_rows:
+        outcome_table.add_row("[dim]no reconciliations[/dim]", "[dim]0[/dim]")
+
+    console.print("[bold]Drift events[/bold]")
+    console.print(summary_table)
+    console.print("[bold]Reconciliation outcomes[/bold]")
+    console.print(outcome_table)
+    console.print(f"[dim]DB → {config.DB_PATH}[/dim]\n")
 
 
 if __name__ == "__main__":

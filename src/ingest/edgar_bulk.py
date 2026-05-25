@@ -205,16 +205,16 @@ def _parse_zip(zip_bytes: bytes, target_ciks: set[str]) -> list[dict]:
     # Build accession → filing metadata index for target CIKs only
     sub_index: dict[str, dict] = {}
     for row in submissions:
-        cik_raw = row.get("FILINGMANAGER_CIK", "").lstrip("0") or "0"
+        cik_raw = row.get("CIK", "").lstrip("0") or "0"
         cik_padded = cik_raw.zfill(10)
         if not _matches_target(cik_raw, cik_padded, target_ciks):
             continue
         acc = _normalise_accession(row.get("ACCESSION_NUMBER", ""))
         sub_index[acc] = {
             "cik": cik_padded,
-            "filing_date": row.get("FILED") or row.get("FILING_DATE", ""),
-            "as_of_date": row.get("PERIOD_OF_REPORT", ""),
-            "form_type": row.get("FORM_TYPE", "13F-HR"),
+            "filing_date": row.get("FILING_DATE", ""),
+            "as_of_date": row.get("PERIODOFREPORT", ""),
+            "form_type": row.get("SUBMISSIONTYPE", "13F-HR"),
         }
 
     if not sub_index:

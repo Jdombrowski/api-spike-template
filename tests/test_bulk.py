@@ -131,11 +131,10 @@ def _make_zip(submission_rows: list[dict], infotable_rows: list[dict]) -> bytes:
 _SUBMISSION = [
     {
         "ACCESSION_NUMBER": "0001067983-24-000009",
-        "FILINGMANAGER_CIK": "0001067983",
-        "FILINGMANAGER_NAME": "BERKSHIRE HATHAWAY INC",
-        "PERIOD_OF_REPORT": "2024-09-30",
-        "FILED": "2024-11-14",
-        "FORM_TYPE": "13F-HR",
+        "CIK": "0001067983",
+        "PERIODOFREPORT": "2024-09-30",
+        "FILING_DATE": "2024-11-14",
+        "SUBMISSIONTYPE": "13F-HR",
     }
 ]
 

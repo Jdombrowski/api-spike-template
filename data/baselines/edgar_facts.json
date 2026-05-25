@@ -1,18 +1,184 @@
 {
   "name": "edgar_company_facts",
-  "created_at": "2026-05-19T20:06:23.712023+00:00",
+  "created_at": "2026-05-25T07:19:43.157246+00:00",
+  "max_depth": 2,
   "fields": {
-    "cik": {
+    "investorWebsite": {
       "types": [
-        "int",
         "str"
       ],
       "nullable": false,
       "optional": false
     },
-    "entityName": {
+    "ownerOrg": {
       "types": [
         "str"
+      ],
+      "nullable": false,
+      "optional": false
+    },
+    "ein": {
+      "types": [
+        "str"
+      ],
+      "nullable": false,
+      "optional": false
+    },
+    "flags": {
+      "types": [
+        "str"
+      ],
+      "nullable": false,
+      "optional": false
+    },
+    "name": {
+      "types": [
+        "str"
+      ],
+      "nullable": false,
+      "optional": false
+    },
+    "tickers": {
+      "types": [
+        "list"
+      ],
+      "nullable": false,
+      "optional": false
+    },
+    "description": {
+      "types": [
+        "str"
+      ],
+      "nullable": false,
+      "optional": false
+    },
+    "sic": {
+      "types": [
+        "str"
+      ],
+      "nullable": false,
+      "optional": false
+    },
+    "sicDescription": {
+      "types": [
+        "str"
+      ],
+      "nullable": false,
+      "optional": false
+    },
+    "stateOfIncorporation": {
+      "types": [
+        "str"
+      ],
+      "nullable": false,
+      "optional": false
+    },
+    "addresses.business": {
+      "types": [
+        "dict"
+      ],
+      "nullable": false,
+      "optional": false
+    },
+    "exchanges": {
+      "types": [
+        "list"
+      ],
+      "nullable": false,
+      "optional": false
+    },
+    "cik": {
+      "types": [
+        "str"
+      ],
+      "nullable": false,
+      "optional": false
+    },
+    "filings.recent": {
+      "types": [
+        "dict"
+      ],
+      "nullable": false,
+      "optional": false
+    },
+    "addresses.mailing": {
+      "types": [
+        "dict"
+      ],
+      "nullable": false,
+      "optional": false
+    },
+    "entityType": {
+      "types": [
+        "str"
+      ],
+      "nullable": false,
+      "optional": false
+    },
+    "insiderTransactionForOwnerExists": {
+      "types": [
+        "int"
+      ],
+      "nullable": false,
+      "optional": false
+    },
+    "lei": {
+      "types": [],
+      "nullable": true,
+      "optional": false
+    },
+    "insiderTransactionForIssuerExists": {
+      "types": [
+        "int"
+      ],
+      "nullable": false,
+      "optional": false
+    },
+    "category": {
+      "types": [
+        "str"
+      ],
+      "nullable": false,
+      "optional": false
+    },
+    "phone": {
+      "types": [
+        "str"
+      ],
+      "nullable": false,
+      "optional": false
+    },
+    "website": {
+      "types": [
+        "str"
+      ],
+      "nullable": false,
+      "optional": false
+    },
+    "formerNames": {
+      "types": [
+        "list"
+      ],
+      "nullable": false,
+      "optional": false
+    },
+    "stateOfIncorporationDescription": {
+      "types": [
+        "str"
+      ],
+      "nullable": false,
+      "optional": false
+    },
+    "fiscalYearEnd": {
+      "types": [
+        "str"
+      ],
+      "nullable": false,
+      "optional": false
+    },
+    "filings.files": {
+      "types": [
+        "list"
       ],
       "nullable": false,
       "optional": false

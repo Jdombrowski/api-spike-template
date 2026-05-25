@@ -24,6 +24,11 @@ EDGAR_USER_AGENT = os.getenv(
 POLYGON_BASE = "https://api.polygon.io"
 POLYGON_API_KEY = os.getenv("POLYGON_API_KEY", "")
 
+# ── Schema profiling / drift detection ────────────────────────────────────
+# Depth at which nested dicts are flattened for profiling and drift checks.
+# Must be the same value everywhere — baseline and live checks must agree.
+PROFILE_MAX_DEPTH = 2
+
 # ── HTTP Client (circuit breaker, backoff) ─────────────────────────────────
 MAX_RETRIES = int(os.getenv("MAX_RETRIES", "3"))
 REQUEST_TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", "30"))

@@ -14,6 +14,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+from src import config
+
 log = logging.getLogger(__name__)
 
 
@@ -42,10 +44,11 @@ class SchemaDriftDetector:
             alert(issues)
     """
 
-    def __init__(self, name: str):
+    def __init__(self, name: str, max_depth: int = config.PROFILE_MAX_DEPTH):
         self.name = name
         self.baseline: dict | None = None
         self._created_at: str | None = None
+        self._max_depth = max_depth
 
     # ── Baseline management ────────────────────────────────────────────────
 
@@ -61,6 +64,7 @@ class SchemaDriftDetector:
         payload = {
             "name": self.name,
             "created_at": self._created_at,
+            "max_depth": self._max_depth,
             "fields": self.baseline,
         }
         Path(path).write_text(json.dumps(payload, indent=2))
@@ -69,7 +73,7 @@ class SchemaDriftDetector:
     @classmethod
     def load(cls, path: str | Path) -> "SchemaDriftDetector":
         data = json.loads(Path(path).read_text())
-        instance = cls(data["name"])
+        instance = cls(data["name"], max_depth=data.get("max_depth", 2))
         instance.baseline = data["fields"]
         instance._created_at = data.get("created_at")
         fields = instance.baseline or {}
@@ -93,7 +97,7 @@ class SchemaDriftDetector:
 
         from src.profile.profiler import _flatten
 
-        current = record if flat else _flatten(record)
+        current = record if flat else _flatten(record, max_depth=self._max_depth)
 
         issues: list[DriftIssue] = []
         current_types = {

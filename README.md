@@ -21,15 +21,11 @@ Financial APIs are inconsistently documented:
 The naive approach — write a scraper, eyeball a few responses, ship — produces
 pipelines that silently corrupt data or break on schema changes.
 
-This spike demonstrates a systematic investigatory approach. 
+This spike demonstrates a systematic investigation methodology instead.
 
 ---
 
 ## Quick Start
-
-### Pre-reqs
-1. [Polygon API key](https://massive.com/) - now Massive.com
-2. [EDGAR SEC](https://sec-api.io/docs)
 
 ```bash
 make init          # create venv, install deps, scaffold .env
@@ -186,6 +182,38 @@ Values shifted from undocumented integers to strings (`"operating"`, `"funds"`,
 `"holding"`). Drift detection would catch this on the day it deployed. A pipeline
 without it silently broke.
 
+**Entity metadata and financial data live on different endpoints.**
+EDGAR's `companyfacts` endpoint returns only XBRL financial data — `cik`,
+`entityName`, and `facts`. Ticker symbols, SIC codes, exchange listings, and
+state of incorporation are on the `submissions` endpoint instead. Using
+`companyfacts` as the entity source means ticker resolution silently returns
+empty for every entity, causing all downstream Polygon cross-referencing to be
+skipped. Custodian APIs have the same pattern: account balance and account
+metadata are often separate endpoints with different auth scopes.
+
+**EDGAR and Polygon use different ticker formats for share classes.**
+EDGAR returns class-share tickers with hyphens (`BRK-B`, `BRK-A`). Polygon
+requires dot notation (`BRK.B`, `BRK.A`) and returns HTTP 400 with "Invalid
+ticker" — not a 404, not a data-quality warning, a hard error. No documentation
+mentions the discrepancy. The fix is a one-character substitution, but finding it
+requires knowing to look for a format mismatch rather than a missing symbol.
+
+**CIK alone does not identify a publicly-traded entity.**
+CIK `0001364742` in EDGAR is "BlackRock Finance, Inc." — a non-public operating
+subsidiary — not "BlackRock, Inc." (BLK, CIK `0002012383`). A pipeline that
+trusts CIK-to-company lookups without verifying the returned entity name will
+silently fetch the wrong entity, find no ticker, and skip all cross-validation.
+The correct CIK for the publicly-traded parent must be confirmed from the
+`submissions` response, not assumed from external reference data.
+
+**Drift baselines must be invalidated when the source endpoint changes.**
+Switching from `companyfacts` to `submissions` as the primary EDGAR source
+generated 78 drift events across 3 entities — all noise. The baseline had been
+trained on `companyfacts` fields (`entityName`, `cik`); every real `submissions`
+field appeared as "new", and `entityName` appeared as "missing". The count looked
+alarming but contained zero signal. Baselines need to be versioned or invalidated
+whenever the underlying source schema changes, not just when the API changes.
+
 ---
 
 ## Architecture Notes
@@ -217,15 +245,15 @@ issue would actually matter — while keeping runtime predictable.
 
 ## Relevance to Custodian API Work
 
-| EDGAR                      | Custodian equivalent                  |
-| -------------------------- | ------------------------------------- |
-| CIK                        | account_id                            |
-| `companyfacts` endpoint    | account balance / position endpoint   |
-| 13F InfoTable XML          | position file / holding report        |
-| XBRL concept taxonomy      | custodian's proprietary field naming  |
-| Nightly index updates      | Nightly SFTP file drops               |
-| Regulatory schema changes  | Custodian API version updates         |
-| USD vs USD_THOUSANDS units | Custodian-specific value multipliers  |
+| EDGAR                      | Custodian equivalent                 |
+| -------------------------- | ------------------------------------ |
+| CIK                        | account_id                           |
+| `companyfacts` endpoint    | account balance / position endpoint  |
+| 13F InfoTable XML          | position file / holding report       |
+| XBRL concept taxonomy      | custodian's proprietary field naming |
+| Nightly index updates      | Nightly SFTP file drops              |
+| Regulatory schema changes  | Custodian API version updates        |
+| USD vs USD_THOUSANDS units | Custodian-specific value multipliers |
 
 The same methodology — profile, triangulate, map explicitly, detect drift —
 applies directly to Schwab, Fidelity, and Pershing integrations.

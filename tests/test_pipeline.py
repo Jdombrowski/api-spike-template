@@ -66,7 +66,7 @@ def isolated_env(monkeypatch, tmp_path):
 class TestPipelineHappyPath:
     def test_runs_without_error(self, monkeypatch):
         monkeypatch.setattr(
-            "src.pipeline.get_company_facts", lambda cik, save_sample=False: _EDGAR_RAW
+            "src.pipeline.get_submissions", lambda cik, save_sample=False: _EDGAR_RAW
         )
         monkeypatch.setattr(
             "src.pipeline.get_ticker_details", lambda ticker, save_sample=False: _POLYGON_RAW
@@ -75,7 +75,7 @@ class TestPipelineHappyPath:
 
     def test_saves_raw_responses_for_both_sources(self, monkeypatch):
         monkeypatch.setattr(
-            "src.pipeline.get_company_facts", lambda cik, save_sample=False: _EDGAR_RAW
+            "src.pipeline.get_submissions", lambda cik, save_sample=False: _EDGAR_RAW
         )
         monkeypatch.setattr(
             "src.pipeline.get_ticker_details", lambda ticker, save_sample=False: _POLYGON_RAW
@@ -90,7 +90,7 @@ class TestPipelineHappyPath:
 
     def test_saves_canonical_facts(self, monkeypatch):
         monkeypatch.setattr(
-            "src.pipeline.get_company_facts", lambda cik, save_sample=False: _EDGAR_RAW
+            "src.pipeline.get_submissions", lambda cik, save_sample=False: _EDGAR_RAW
         )
         monkeypatch.setattr(
             "src.pipeline.get_ticker_details", lambda ticker, save_sample=False: _POLYGON_RAW
@@ -103,7 +103,7 @@ class TestPipelineHappyPath:
 
     def test_reconciliation_is_validated(self, monkeypatch):
         monkeypatch.setattr(
-            "src.pipeline.get_company_facts", lambda cik, save_sample=False: _EDGAR_RAW
+            "src.pipeline.get_submissions", lambda cik, save_sample=False: _EDGAR_RAW
         )
         monkeypatch.setattr(
             "src.pipeline.get_ticker_details", lambda ticker, save_sample=False: _POLYGON_RAW
@@ -116,7 +116,7 @@ class TestPipelineHappyPath:
 
     def test_creates_drift_baseline_on_first_run(self, monkeypatch, tmp_path):
         monkeypatch.setattr(
-            "src.pipeline.get_company_facts", lambda cik, save_sample=False: _EDGAR_RAW
+            "src.pipeline.get_submissions", lambda cik, save_sample=False: _EDGAR_RAW
         )
         monkeypatch.setattr(
             "src.pipeline.get_ticker_details", lambda ticker, save_sample=False: _POLYGON_RAW
@@ -136,7 +136,7 @@ class TestPipelineEdgarFailure:
     def test_edgar_404_skips_cik_without_crashing(self, monkeypatch):
         """A failed EDGAR fetch should log and skip — not abort the whole run."""
         monkeypatch.setattr(
-            "src.pipeline.get_company_facts",
+            "src.pipeline.get_submissions",
             MagicMock(side_effect=LookupError("404 not found")),
         )
         pipeline_mod.run([SAMPLE_CIK], save_samples=False)
@@ -162,7 +162,7 @@ class TestPipelineEdgarFailure:
                 raise LookupError("404")
             return second_edgar
 
-        monkeypatch.setattr("src.pipeline.get_company_facts", edgar_sometimes_fails)
+        monkeypatch.setattr("src.pipeline.get_submissions", edgar_sometimes_fails)
         monkeypatch.setattr(
             "src.pipeline.get_ticker_details", lambda ticker, save_sample=False: second_polygon
         )
@@ -183,7 +183,7 @@ class TestPipelineNoPolygon:
     def test_polygon_failure_still_saves_edgar_canonical(self, monkeypatch):
         """Polygon error must not prevent EDGAR canonical from being saved."""
         monkeypatch.setattr(
-            "src.pipeline.get_company_facts", lambda cik, save_sample=False: _EDGAR_RAW
+            "src.pipeline.get_submissions", lambda cik, save_sample=False: _EDGAR_RAW
         )
         monkeypatch.setattr(
             "src.pipeline.get_ticker_details",
@@ -199,7 +199,7 @@ class TestPipelineNoPolygon:
 
     def test_no_reconciliation_without_polygon(self, monkeypatch):
         monkeypatch.setattr(
-            "src.pipeline.get_company_facts", lambda cik, save_sample=False: _EDGAR_RAW
+            "src.pipeline.get_submissions", lambda cik, save_sample=False: _EDGAR_RAW
         )
         monkeypatch.setattr(
             "src.pipeline.get_ticker_details",
@@ -215,7 +215,7 @@ class TestPipelineNoPolygon:
         """If EDGAR returns no tickers and name search returns None, Polygon is skipped."""
         no_ticker_raw = {**_EDGAR_RAW, "tickers": []}
         monkeypatch.setattr(
-            "src.pipeline.get_company_facts", lambda cik, save_sample=False: no_ticker_raw
+            "src.pipeline.get_submissions", lambda cik, save_sample=False: no_ticker_raw
         )
         monkeypatch.setattr("src.pipeline.search_ticker_by_name", lambda name: None)
         monkeypatch.setattr("src.pipeline.get_ticker_details", MagicMock())

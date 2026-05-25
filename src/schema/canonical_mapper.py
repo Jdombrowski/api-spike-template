@@ -76,7 +76,7 @@ class EdgarCompanyFactsMapper:
         "name": "entity_name",  # CONFIRMED: string, legal name
         "sic": "sic_code",  # CONFIRMED: industry classification code
         "sicDescription": "sic_description",  # CONFIRMED: human-readable SIC
-        "stateOfInc": "state_of_incorporation",  # CONFIRMED: 2-letter state or "X2" for foreign
+        "stateOfIncorporation": "state_of_incorporation",  # CONFIRMED: 2-letter state code
         "tickers": "tickers",  # CONFIRMED: list of ticker strings, may be empty
         "exchanges": "exchanges",  # CONFIRMED: list, may be empty for OTC
     }
@@ -93,9 +93,23 @@ class EdgarCompanyFactsMapper:
 
     # Fields we observed but have not yet mapped
     UNMAPPED = [
-        "facts",  # deeply nested — needs its own profiler pass
-        "filings",  # filing history — separate mapper
-        "addresses",  # registered address — not needed for holdings use case
+        # Submissions endpoint — entity metadata we're not using yet
+        "ownerOrg",
+        "insiderTransactionForOwnerExists",
+        "insiderTransactionForIssuerExists",
+        "lei",               # Legal Entity Identifier — useful for cross-referencing
+        "description",
+        "website",
+        "investorWebsite",
+        "category",          # e.g. "Domestic Operating Companies"
+        "stateOfIncorporationDescription",
+        "phone",
+        "flags",
+        "formerNames",       # list of {"date": ..., "name": ...} — useful for alias matching
+        "addresses",         # mailing + business — not needed for holdings use case
+        "filings",           # filing history — separate mapper
+        # Company facts endpoint
+        "facts",             # deeply nested XBRL data — needs its own profiler pass
     ]
 
     def map(self, raw: dict) -> dict:
