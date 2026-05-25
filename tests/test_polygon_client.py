@@ -13,6 +13,8 @@ hammering the free-tier rate limit (5 req/min).
 import pytest
 
 from src import config
+
+pytestmark = pytest.mark.live
 from src.ingest import polygon_client
 
 

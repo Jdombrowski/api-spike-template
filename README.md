@@ -1,5 +1,8 @@
 # API Investigation Spike: SEC EDGAR + Polygon.io
 
+[![CI](https://github.com/Jdombrowski/api-spike-template/actions/workflows/ci.yml/badge.svg)](https://github.com/Jdombrowski/api-spike-template/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/Jdombrowski/api-spike-template/graph/badge.svg)](https://codecov.io/gh/Jdombrowski/api-spike-template)
+
 A data engineering spike demonstrating how to approach **poorly-documented
 financial APIs** — profiling real responses, detecting schema drift, building
 explicit canonical mappings, and cross-validating across sources.
